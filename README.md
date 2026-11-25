@@ -58,8 +58,8 @@ Imposta i costi del tuo account con `TRACKER_FEE_<FONTE>` e `TRACKER_OUTBOUND_<F
 | Subito | Lettura automatica degli avvisi email delle ricerche salvate, feed autorizzato o file | Confronti da vendite importate e bozze |
 | Amazon Italia | Creators API con approvazione di Amazon, feed autorizzato o file | Confronti da vendite importate e bozze |
 | AliExpress | Affiliate API TOP, feed autorizzato o file | Confronti da vendite importate e bozze |
-| Vinted | Feed di ricerca autorizzato. Il lettore email è utilizzabile se il canale effettivamente invia annunci con link diretti | Confronti da vendite importate e bozze |
-| Wallapop, Facebook Marketplace | Stesso flusso tramite ricerca diretta, file o feed autorizzato | Confronti da vendite importate e bozze |
+| Vinted | Feed di ricerca autorizzato o segnalazioni dall’indice Brave. Il lettore email è utilizzabile se la fonte invia annunci con link diretti | Confronti da vendite importate e bozze |
+| Wallapop, Facebook Marketplace | Feed autorizzato, segnalazioni dall’indice Brave oppure file | Confronti da vendite importate e bozze |
 | Altri provider | Configurabili da CLI con feed e permesso per fonte | Comparabili importati con campo `destination` |
 
 Per eBay, configura `EBAY_CLIENT_ID` ed `EBAY_CLIENT_SECRET` di produzione. La Browse API restituisce inserzioni attive. Per i prezzi pagati importa gli ordini o confronti ottenuti legittimamente. Puoi controllare i confronti con Ricerca prodotti nel tuo account eBay. [eBay Browse API](https://developer.ebay.com/api-docs/buy/api-browse.html)
@@ -68,9 +68,22 @@ Per **Subito**, salva le ricerche sul sito e attiva gli avvisi via email. Fai re
 
 Per **Amazon**, abilita `AMAZON_CREATORS_TRACKER_APPROVED=1` se Amazon ha approvato l’uso di questi dati per il tracker, quindi imposta `AMAZON_CREATORS_ID`, `_SECRET` e `_TAG`. L’adattatore usa le credenziali europee e cerca sul mercato italiano. Per **AliExpress**, imposta `ALIEXPRESS_TOP_KEY`, `_SECRET` e `ALIEXPRESS_TRACKING_ID` da un’app abilitata alla ricerca Affiliate TOP. La ricerca richiede risultati per la consegna in Italia e importi in EUR. In entrambi i casi il prezzo di catalogo resta indicativo se manca il costo di spedizione. [Amazon Creators API](https://programma-affiliazione.amazon.it/creatorsapi/docs/en-us/api-reference/operations/search-items), [Politiche Amazon Associates](https://affiliate-program.amazon.com/help/operating/policies), [AliExpress Product Query](https://developer.alibaba.com/docs/api.htm?apiId=45803)
 
-La guida di **Vinted** descrive un contatore di nuovi annunci all’apertura della ricerca salvata. Per la raccolta programmata con copertura della ricerca, configura un feed autorizzato che restituisca le inserzioni per parola chiave. Il lettore email è riutilizzabile sui marketplace inclusi quando una fonte invia effettivamente messaggi con titoli e link diretti delle offerte, sostituendo `SUBITO` nelle variabili con la fonte corrispondente. [Ricerche salvate su Vinted](https://www.vinted.it/help/392/435-save-your-searches)
+La guida di **Vinted** descrive un contatore di nuovi annunci all’apertura della ricerca salvata. **Wallapop** offre notifiche delle ricerche salvate nell’app. Il lettore email è riutilizzabile sui marketplace inclusi quando una fonte invia effettivamente messaggi con titoli e link diretti delle offerte, sostituendo `SUBITO` nelle variabili con la fonte corrispondente. [Ricerche salvate su Vinted](https://www.vinted.it/help/392/435-save-your-searches), [Avvisi delle ricerche su Wallapop](https://assistenza.wallapop.com/hc/it/articles/4406242256017-Salvare-ricerche-e-ricevere-avvisi-su-Wallapop)
 
 Per attivare un feed imposta `TRACKER_FEED_<FONTE>_URL`, `_TOKEN` facoltativo e `_KIND=sale` se restituisce vendite. Il tracker invia `q` e il cursore. Il formato di risposta è `{"items":[...],"next_cursor":"..."}`. I campi delle righe sono gli stessi degli import manuali. Per Soldgraph serve un feed compatibile o un adattatore basato sul contratto del provider. La configurazione di esempio contiene segnaposto.
+
+### Ricerca di annunci indicizzati
+
+Le fonti senza API o feed configurato possono condividere una chiave Brave Search. Usa un piano che consenta di conservare i risultati prima di abilitare questa configurazione nel file `.env`. [Brave Web Search API](https://api-dashboard.search.brave.com/app/documentation/web-search), [Condizioni di Brave Search API](https://api-dashboard.search.brave.com/terms-of-service)
+
+```dotenv
+TRACKER_BRAVE_API_KEY=
+TRACKER_BRAVE_STORAGE_ALLOWED=1
+TRACKER_BRAVE_SOURCES=vinted,wallapop,facebook
+TRACKER_BRAVE_MAX_PAGES=1
+```
+
+In **Prodotti monitorati**, seleziona le fonti e **Mostra anche offerte da verificare con dati incompleti**. Abilita **Storico consentito** per le fonti selezionate. Il worker interroga l’indice a ogni ciclo e accetta solo link ad annunci compatibili con il prodotto. La pagina **Avvisi** mostra il link identificato e indica che disponibilità, prezzo e costi restano da controllare. La copertura dipende dalle pagine indicizzate. Il limite configurabile da 1 a 10 pagine vale per prodotto, marketplace e ciclo, con fino a 20 risultati per chiamata.
 
 In **Dati reali → Sorgenti → Prodotti monitorati** seleziona un prodotto e i marketplace, poi imposta la frequenza e le soglie. I monitoraggi si possono modificare o mettere in pausa. Il worker usa la frequenza più breve delle ricerche che condividono la stessa casella di una fonte. Per gli avvisi di margine servono costo completo, disponibilità e confronti sufficienti. Se selezioni anche le offerte da verificare, queste appaiono nella stessa pagina con ciò che manca.
 

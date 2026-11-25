@@ -152,7 +152,9 @@ def direct_connection(source):
 
 
 def connections(source):
-    return [value for value in (direct_connection(source),
+    from .search_index import search_key
+
+    return [value for value in (direct_connection(source) or ("Indice Brave" if search_key(source) else None),
             "Avvisi email" if mail_settings(source) else None) if value]
 
 
@@ -175,6 +177,9 @@ def adapter(client, source):
         from .retail import AliExpressAffiliate
         return AliExpressAffiliate(client, os.environ["ALIEXPRESS_TOP_KEY"], os.environ["ALIEXPRESS_TOP_SECRET"],
                                    os.environ["ALIEXPRESS_TRACKING_ID"])
+    from .search_index import BraveWebSearch, search_key
+    if key := search_key(source):
+        return BraveWebSearch(client, source, key)
     raise FetchError("Connettore automatico da configurare", retry=False)
 
 
@@ -197,14 +202,17 @@ def active_subscriptions(session, mode):
 def schedule(session, mode, timestamp=None):
     if mode != "real":
         return
+    from .search_index import search_key
+
     timestamp = timestamp or now()
     rules = source_rules(session, mode)
     inboxes = {}
-    for row, sources, _ in active_subscriptions(session, mode):
+    for row, sources, legacy in active_subscriptions(session, mode):
         for source in sources:
             if not rules.get(source, {}).get("history"):
                 continue
-            if direct_connection(source):
+            indexed = not legacy and row.data["signals"] and search_key(source)
+            if direct_connection(source) or indexed:
                 schedule_search(session, mode, timestamp, row, source)
             if mail_settings(source):
                 minutes = row.data["minutes"]
@@ -260,6 +268,7 @@ def collect_mail(session, mode, job):
 def collect(session, mode, job, client):
     payload = job.data
     source = payload["source"]
+    subscription = None
     if job.kind == "discover" and payload.get("watch_event"):
         subscription = session.get(Event, payload["watch_event"])
         if subscription is None or not is_current(session, mode, subscription):
@@ -299,22 +308,31 @@ def collect(session, mode, job, client):
         enqueue(session, mode, "refresh", f"refresh:after:{job.id}", payload, timestamp + timedelta(hours=delay))
         return
     cursor = payload.get("cursor")
-    page = connector.discover(payload["query"], cursor)
     kind = getattr(connector, "kind", "offer")
-    rows = list(enumerate(page.rows, start=1))
-    if kind == "offer":
-        rows = [(index, {**row, "observed_at": row.get("observed_at") or timestamp.isoformat()}) for index, row in rows]
-    valid, errors = preview(rows, {}, kind)
-    write_rows(session, mode, source, kind, valid, errors, digest(job.key), refresh=False)
+    if kind == "search_index" and (not subscription or subscription.kind != "product_watch" or not subscription.data["signals"]):
+        return
+    page = connector.discover(payload["query"], cursor)
+    details = {"query": payload["query"], "page": payload["page"], "received": len(page.rows)}
+    if kind == "search_index":
+        from .search_index import save_index_results
+
+        accepted = save_index_results(session, mode, source, subscription.external_id, catalog(session, mode), page.rows)
+        details.update(transport="Indice Brave", matched=accepted, rejected=0, status="success")
+        valid = []
+    else:
+        rows = list(enumerate(page.rows, start=1))
+        if kind == "offer":
+            rows = [(index, {**row, "observed_at": row.get("observed_at") or timestamp.isoformat()}) for index, row in rows]
+        valid, errors = preview(rows, {}, kind)
+        write_rows(session, mode, source, kind, valid, errors, digest(job.key), refresh=False)
+        details.update(rejected=len(errors), status="partial" if errors else "success")
     if connector.supports_refresh:
         hour = int(timestamp.timestamp()) // (60 * 60 * 12)
         for _, (data, _, _, _) in valid:
             identifier = data["external_id"]
             enqueue(session, mode, "refresh", f"refresh:seed:{source}:{digest(identifier)[:24]}:{hour}",
                     {"source": source, "id": identifier}, timestamp + timedelta(hours=3))
-    record(session, mode, "collection", source, f"{payload['run']}:{payload['page']}",
-           {"query": payload["query"], "page": payload["page"], "received": len(rows), "rejected": len(errors),
-            "status": "partial" if errors else "success"})
+    record(session, mode, "collection", source, f"{payload['run']}:{payload['page']}", details)
     if page.next_cursor is not None and page.next_cursor != cursor and payload["page"] < 40:
         key = f"discover:{payload['run']}:{digest(page.next_cursor)[:24]}"
         enqueue(session, mode, "discover", key,

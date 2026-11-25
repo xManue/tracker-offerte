@@ -7,7 +7,7 @@
 {% if monitor_signals %}
 <section class="panel padded"><h2>Offerte da verificare</h2>
 {% for item in monitor_signals %}
-  <div class="mini-row"><span><a href="/{{ mode }}/offers/{{ item.data.offer_id }}">{{ item.data.title }}</a>
+  <div class="mini-row"><span>{% if item.data.url %}<a href="{{ item.data.url }}" target="_blank" rel="noopener noreferrer">{{ item.data.title }}</a>{% else %}<a href="/{{ mode }}/offers/{{ item.data.offer_id }}">{{ item.data.title }}</a>{% endif %}
     <small>{{ item.source|channel }} · {{ item.known_at|rome }} · {{ item.data.reasons|join(', ') }}</small></span>
     <strong>{% if item.data.purchase is not none %}{{ item.data.purchase|euro }} consegnato{% elif item.data.price is not none %}{{ item.data.price }} {{ item.data.currency }} esposto{% else %}Prezzo da verificare{% endif %}</strong></div>
 {% endfor %}

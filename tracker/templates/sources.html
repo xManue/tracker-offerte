@@ -90,7 +90,7 @@
 </section>
 <div class="grid">
 <section class="panel padded"><h2>Ultime raccolte e import</h2>
-  {% for item in collections|reverse %}<p>{{ item.source|channel }} · {{ item.data.query }} · {{ item.data.received }} righe <small>{{ item.known_at|rome }} · {{ 'Parziale' if item.data.status == 'partial' else 'Riuscita' }}</small></p>{% endfor %}
+  {% for item in collections|reverse %}<p>{{ item.source|channel }} · {{ item.data.query }} · {{ item.data.received }} righe{% if item.data.transport %} · {{ item.data.transport }} · {{ item.data.matched }} pertinenti{% endif %} <small>{{ item.known_at|rome }} · {{ 'Parziale' if item.data.status == 'partial' else 'Riuscita' }}</small></p>{% endfor %}
   {% for item in batches|reverse %}<p>{{ item.source|channel }} · {{ item.data.rows }} righe · {{ item.data.rejected }} scarti<small>{{ item.known_at|rome }}</small></p>{% endfor %}
   {% for item in errors|reverse %}<p class="negative">{{ item.source|channel }} · {{ item.data.message }}<small>{{ item.known_at|rome }}</small></p>{% endfor %}
   {% if not collections and not batches %}<p class="muted">Nessuna raccolta avviata.</p>{% endif %}
