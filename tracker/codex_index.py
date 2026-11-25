@@ -1,17 +1,24 @@
 import json
 import os
 from contextlib import suppress
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import select
 
+from .availability import CHECK_SOURCES, STATUSES, listing_availability, save_listing_availability
 from .catalog import catalog
 from .channels import source_rules
 from .connectors import connections
 from .db import Event, now
+from .mail_alerts import canonical_listing
 from .monitoring import period_slot, watches
 from .search_index import SEARCH_DOMAINS, save_index_results
-from .store import digest, record
+from .store import digest, record, utc
+
+
+CHECK_AGE = timedelta(days=7)
+CHECK_LIMIT = 5
 
 
 def enabled():
@@ -35,13 +42,42 @@ def targets(session, clock, *, previous=False):
             for period in periods:
                 key = digest(f"codex:{subscription.id}:{source}:{period}")[:32]
                 items[key] = {"id": key, "product": product, "source": source,
-                              "domain": SEARCH_DOMAINS[source], "query": watch["query"]}
+                              "domain": SEARCH_DOMAINS[source], "query": watch["query"],
+                              "period": period * watch["minutes"] * 60}
     if not items:
         return items
     done = set(session.scalars(select(Event.external_id).where(
         Event.mode == "real", Event.kind == "collection", Event.external_id.in_(items),
     )))
     return {key: item for key, item in items.items() if key not in done}
+
+
+def recent_listings(session, target, clock):
+    rows = session.scalars(select(Event).where(
+        Event.mode == "real", Event.kind == "index_result", Event.source == target["source"],
+        Event.known_at >= clock - CHECK_AGE, Event.data["product_id"].as_string() == target["product"],
+    ).order_by(Event.known_at, Event.id))
+    return {item.external_id: item for item in rows}
+
+
+def apply_checks(session, target, hits, checks, observed_at, clock):
+    source = target["source"]
+    listings = recent_listings(session, target, clock)
+    period = datetime.fromtimestamp(target["period"], tz=UTC)
+    seen = set()
+    for item in [*checks, *hits]:
+        if not isinstance(item, dict) or not isinstance(item.get("url"), str):
+            continue
+        observed = item.get("status")
+        if not isinstance(observed, str) or observed not in STATUSES:
+            continue
+        link = canonical_listing(source, item["url"])
+        if not link or link[0] not in listings or link[0] in seen:
+            continue
+        identifier, url = link
+        seen.add(identifier)
+        save_listing_availability(session, source, identifier, url, observed, target["id"],
+                                  period, observed_at, clock)
 
 
 def synchronize(sessions, directory=None, clock=None):
@@ -62,12 +98,15 @@ def synchronize(sessions, directory=None, clock=None):
                     filename.unlink(missing_ok=True)
             continue
         try:
-            if filename.stat().st_size > 128_000:
+            info = filename.stat()
+            if info.st_size > 128_000:
                 continue
-            hits = json.loads(filename.read_text(encoding="utf-8-sig"))
+            payload = json.loads(filename.read_text(encoding="utf-8-sig"))
         except (FileNotFoundError, PermissionError, UnicodeError, ValueError):
             continue
-        if not isinstance(hits, list) or len(hits) > 40:
+        hits = payload.get("hits") if isinstance(payload, dict) else payload
+        checks = payload.get("checks", []) if isinstance(payload, dict) else []
+        if not isinstance(hits, list) or len(hits) > 40 or not isinstance(checks, list) or len(checks) > CHECK_LIMIT:
             continue
         target = pending[key]
         source = target["source"]
@@ -75,6 +114,9 @@ def synchronize(sessions, directory=None, clock=None):
             if key in targets(session, clock, previous=True):
                 matched = save_index_results(session, "real", source, target["product"],
                                              catalog(session, "real"), hits, provider="codex_web_search")
+                if source in CHECK_SOURCES:
+                    observed_at = min(clock, datetime.fromtimestamp(info.st_mtime, tz=UTC))
+                    apply_checks(session, target, hits, checks, observed_at, clock)
                 record(session, "real", "collection", source, key,
                        {"transport": "Indice web Codex", "status": "success", "query": target["query"],
                         "received": len(hits), "matched": matched, "rejected": 0, "page": 1})
@@ -82,6 +124,20 @@ def synchronize(sessions, directory=None, clock=None):
             filename.unlink(missing_ok=True)
     with sessions() as session:
         ready = targets(session, clock)
+        previous_checks = listing_availability(session, "real") if ready else {}
+        for target in ready.values():
+            target.pop("period")
+            source = target["source"]
+            if source not in CHECK_SOURCES:
+                continue
+            candidates = []
+            for identifier, item in recent_listings(session, target, clock).items():
+                previous = previous_checks.get((source, identifier))
+                if previous and previous.status in {"sold", "unavailable"}:
+                    continue
+                candidates.append((utc(previous.checked_at) if previous else utc(item.known_at) - CHECK_AGE,
+                                   identifier, item.data["url"]))
+            target["checks"] = [url for _, _, url in sorted(candidates)[:CHECK_LIMIT]]
     manifest = directory / "requests.json"
     data = json.dumps({"items": list(ready.values())}, ensure_ascii=False, indent=2)
     if not manifest.exists() or manifest.read_text(encoding="utf-8") != data:

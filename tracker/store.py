@@ -50,7 +50,7 @@ def events(session, mode, kind, *, cutoff=None, source=None, external_id=None):
     return list(session.scalars(query.order_by(Event.effective_at, Event.known_at, Event.id)))
 
 
-def latest(session, mode, kind, *, cutoff=None):
+def latest(session, mode, kind, *, cutoff=None, where=None):
     query = select(
         Event.id, func.row_number().over(
             partition_by=(Event.source, Event.external_id),
@@ -59,6 +59,8 @@ def latest(session, mode, kind, *, cutoff=None):
     ).where(Event.mode == mode, Event.kind == kind)
     if cutoff is not None:
         query = query.where(Event.known_at <= cutoff, Event.effective_at <= cutoff)
+    if where is not None:
+        query = query.where(where)
     ranked = query.subquery()
     return list(session.scalars(
         select(Event).join(ranked, ranked.c.id == Event.id).where(ranked.c.position == 1)

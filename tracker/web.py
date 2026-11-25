@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
+from .availability import CLOSED, listing_availability
 from .catalog import catalog, match
 from .channels import CHANNELS, set_source, source_rules
 from .connectors import connections, watch
@@ -35,6 +36,7 @@ ROOT = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=ROOT / "templates")
 LABELS = {
     "available": "Disponibile", "unavailable": "Indisponibile", "unknown": "Da verificare",
+    "reserved": "Riservato o in trattativa",
     "used": "Usato", "new": "Nuovo", "refurbished": "Ricondizionato", "broken": "Guasto",
     "part": "Ricambio", "lot": "Lotto", "single": "Articolo", "packaging": "Imballo",
     "accessory": "Accessorio", "purchased": "Acquistato", "verified": "Verificato", "listed": "Pubblicato",
@@ -390,8 +392,14 @@ def create_app(sessions=None):
     @app.get("/{mode}/alerts")
     def alerts(request: Request, mode: Mode):
         with db() as session:
+            availability = listing_availability(session, mode)
+            visible, closed = [], []
+            for item in reversed(events(session, mode, "monitor_signal")):
+                check = availability.get((item.source, item.external_id))
+                group = closed if check and check.status in CLOSED else visible
+                group.append((item, check))
             return render(request, "alerts", mode, alerts=events(session, mode, "alert")[::-1],
-                          monitor_signals=events(session, mode, "monitor_signal")[::-1],
+                          monitor_signals=visible, closed_signals=closed,
                           request_alerts=events(session, mode, "request_alert")[::-1])
 
     from .web_workflows import register
