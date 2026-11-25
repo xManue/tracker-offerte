@@ -1,6 +1,6 @@
 # Mega Tracker di Offerte
 
-Radar locale per trovare acquisti e confrontare i possibili canali di rivendita. Il catalogo include GPU, CPU e componenti AM4, console, un set LEGO e un utensile. La demo è sintetica e resta concentrata sulle RTX 4070 e sul PC AM4. L’archivio reale parte con il catalogo e può essere alimentato in automatico.
+Radar locale per trovare acquisti e confrontare i possibili canali di rivendita. Il catalogo include GPU, CPU e componenti AM4, smartphone, console, controller, un set LEGO e un utensile. La demo è sintetica e resta concentrata sulle RTX 4070 e sul PC AM4. L’archivio reale parte con il catalogo e può essere alimentato in automatico.
 
 ## Avvio
 
@@ -77,6 +77,20 @@ Per fermarlo, usa `docker compose --env-file .env.cloud -f compose.cloud.yaml do
 ## Raccolta e vendita reale
 
 Imposta i costi del tuo account con `TRACKER_FEE_<FONTE>` e `TRACKER_OUTBOUND_<FONTE>`. La commissione è una frazione, per esempio `0.12`. Il radar mostra il margine quando sono disponibili sia il costo consegnato sia i costi di vendita. Le percentuali della demo sono ipotesi sintetiche.
+
+### Prodotti selezionati a novembre 2026
+
+L’aggiornamento usa le ricerche italiane del periodo Black Friday, le quotazioni al pubblico e un campione di inserzioni eBay concluse. L’interesse rilevato dai comparatori misura consultazioni. Le inserzioni concluse aiutano a confermare che il modello si vende, ma da sole non danno un prezzo medio pagato o un tempo medio di vendita. L’Osservatorio di idealo per il 2026 usa anche lo storico del Black Friday 2025. [Idealo](https://www.idealo.it/magazine/e-commerce/black-friday-2026) · [Osservatorio Subito](https://www.subito.it/magazine/second-hand-sempre-prima-scelta-nel-2025.html)
+
+| Priorità di prova | Modello esatto | Evidenza e criterio d’acquisto |
+| --- | --- | --- |
+| Alta | iPhone 15 e iPhone 16 base, 128 GB ciascuno | Per entrambi ci sono inserzioni concluse. Dai precedenza ai telefoni completi con batteria documentata e confronta lo stesso stato d’uso e garanzia. [iPhone 15 usato](https://www.ebay.it/itm/257181784230) · [iPhone 16 aperto, mai usato](https://www.ebay.it/itm/398414729398) |
+| Alta | PlayStation 5 Slim Digital 825 GB | Sony conferma l’edizione da 825 GB. eBay mostra una vendita conclusa da confezione aperta e offerte usate. Confronta il prezzo con la stessa capacità e la dotazione del controller. [Sony](https://www.playstation.com/it-it/ps5/playstation-digital-edition-console-model-group-slim/) · [Vendita conclusa](https://www.ebay.it/itm/267568154517) · [Offerta usata](https://www.ebay.it/itm/327093381706) |
+| Selettiva | Nintendo Switch 2 standard BEE-001, senza gioco | Compare nello speciale Black Friday. Il nuovo parte da €370,86 per la revisione con batteria rimovibile osservata il 25 novembre. È un prezzo concorrente per il cliente, da tenere distinto dai comparabili della BEE-001. [Trovaprezzi.it](https://www.trovaprezzi.it/speciali/black_friday) · [Prezzo della revisione](https://www.idealo.it/confronta-prezzi/213437572/nintendo-switch-2-con-batteria-rimovibile-nero.html) |
+| Selettiva | Samsung Galaxy A56 5G 128 GB | In evidenza nello storico di domanda di idealo, con la variante 128 GB verificata. Mancano abbastanza vendite concluse per stimare la liquidità del modello esatto. [Domanda idealo](https://www.idealo.it/magazine/e-commerce/black-friday-2026) · [Modello Samsung](https://www.samsung.com/it/smartphones/galaxy-a/galaxy-a56-5g-awesome-lightgray-128gb-sm-a566bzaaeue/buy/) |
+| Selettiva | Sony DualSense standard bianco | Un usato osservato a €49,90 si confrontava con il nuovo da €52,90 nel comparatore. Con prezzi così vicini serve comprare molto sotto il prezzo al dettaglio o tagliare i costi di spedizione. [Usato eBay](https://www.ebay.it/itm/407227153479) · [Nuovo idealo](https://www.idealo.it/confronta-prezzi/201375417/sony-dualsense-wireless-controller-white.html) |
+
+Un esempio per l’iPhone 15. Subito mostrava richieste da €320 e €429 per la stessa capacità. Se prevedi di rivendere a €400, una commissione ipotetica del 10%, €10 di costi di vendita e €25 di margine lasciano €325 di costo massimo consegnato. Le richieste osservate non sono prezzi pagati. Il tracker calcola le sue stime da vendite importate, sulla stessa condizione e con commissioni e costi configurati. Per misurare prezzo effettivo e percentuale di vendita puoi usare **Ricerca prodotti** di eBay con modello, condizione, mercato italiano e finestra temporale comparabili. [Richieste Subito](https://www.subito.it/annunci-italia/vendita/telefonia/?q=apple+iphone) · [Ricerca prodotti eBay](https://www.ebay.it/help/selling/selling-tools/product-research?id=4853)
 
 | Piattaforma | Acquisto | Rivendita |
 | --- | --- | --- |

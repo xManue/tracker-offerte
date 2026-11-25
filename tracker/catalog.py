@@ -3,6 +3,10 @@ import unicodedata
 
 from .store import latest, record
 
+PHONE_CONFLICTS = ("icloud bloccato", "bloccato icloud", "blocco attivazione attivo", "blocco mdm",
+                   "imei bloccato", "per ricambi", "solo ricambi", "da riparare")
+ACCESSORIES = r"(?:cavo|supporto|adattatore|cover|custodia|pellicola|vetro temperato|caricatore)"
+
 SEED = (
     {"id": "rtx4070-asus-dual", "name": "ASUS Dual GeForce RTX 4070 12 GB", "category": "GPU",
      "brand": "ASUS", "mpn": "DUAL-RTX4070-12G", "aliases": ["asus dual rtx 4070", "asus dual geforce rtx 4070"],
@@ -54,6 +58,38 @@ EXPANSION = (
      "mpn": "75375", "aliases": ["lego 75375"], "attrs": {"set_number": "75375"}},
     {"id": "makita-dhp484", "name": "Makita DHP484", "category": "Utensili", "brand": "Makita",
      "mpn": "DHP484", "aliases": ["makita dhp484", "makita dhp484z"], "attrs": {"kit": "corpo macchina"}},
+    {"id": "iphone-15-128", "name": "Apple iPhone 15 128 GB", "category": "Smartphone", "brand": "Apple",
+     "aliases": ["iphone 15"], "search_query": "iPhone 15 128GB",
+     "conflict_terms": ["iphone 15 pro", "iphone 15 plus", *PHONE_CONFLICTS], "attrs": {"storage_gb": 128}},
+    {"id": "iphone-16-128", "name": "Apple iPhone 16 128 GB", "category": "Smartphone", "brand": "Apple",
+     "aliases": ["iphone 16"], "search_query": "iPhone 16 128GB",
+     "conflict_terms": ["iphone 16 pro", "iphone 16 plus", "iphone 16e", "iphone 16 e", *PHONE_CONFLICTS],
+     "attrs": {"storage_gb": 128}},
+    {"id": "galaxy-a56-128", "name": "Samsung Galaxy A56 5G 128 GB", "category": "Smartphone", "brand": "Samsung",
+     "aliases": ["galaxy a56", "samsung a56"], "search_query": "Samsung Galaxy A56 5G 128GB",
+     "conflict_terms": ["enterprise edition", *PHONE_CONFLICTS], "attrs": {"storage_gb": 128}},
+    {"id": "switch-2-standard", "name": "Nintendo Switch 2 solo console (BEE-001)", "category": "Console",
+     "brand": "Nintendo", "mpn": "BEE-001", "aliases": ["nintendo switch 2", "switch 2"],
+     "search_query": "Nintendo Switch 2 console standard",
+     "conflict_terms": ["bee 001 01", "batteria rimovibile", "batteria removibile", "batteria sostituibile",
+                        "mod 2026", "switch 2 v2", "switch 2 lite", "switch 2 oled", "switch 2 modello oled",
+                        "switch 2 edizione oled", "bundle", "solo dock", "solo tablet", "senza dock", "senza joy con",
+                        "senza joycon", "dock non inclusa", "joy con non inclusi",
+                        "mario kart world", "pokopia", "joy con 2 per", "versione giapponese", "hk version"],
+     "attrs": {"edition": "standard", "capacity_gb": 256}},
+    {"id": "ps5-slim-digital-825", "name": "PlayStation 5 Slim Digital 825 GB", "category": "Console", "brand": "Sony",
+     "aliases": ["ps5 slim digital", "ps5 slim digitale", "ps5 slim edizione digitale", "ps5 slim senza lettore",
+                 "playstation 5 slim digital", "playstation 5 slim edizione digitale", "playstation 5 edizione digitale slim"],
+     "search_query": "PS5 Slim Digital 825GB",
+     "conflict_terms": ["con lettore", "con disco", "bundle", "senza controller", "controller non incluso"],
+     "attrs": {"drive": "digital", "storage_gb": 825}},
+    {"id": "dualsense-white", "name": "Sony DualSense standard bianco", "category": "Controller", "brand": "Sony",
+     "aliases": ["dualsense bianco", "dualsense white", "dualsense wireless bianco", "dualsense wireless white",
+                 "dualsense wireless controller white", "dualsense controller wireless bluetooth bianco"],
+     "search_query": "Sony DualSense controller bianco originale",
+     "conflict_terms": ["dualsense edge", "non originale", "replica", "ps5 slim", "playstation 5 slim", "bundle",
+                        "edizione limitata", "stick drift", "hall effect", "tmr", "scocca"],
+     "attrs": {"color": "white", "edition": "standard"}},
 )
 
 
@@ -75,15 +111,18 @@ def seed_catalog(session, mode, known=None, *, include_expansion=True):
 
 def classify(title, description=""):
     text = clean(title + " " + description)
+    name = clean(title)
     if re.search(r"\b(scatola vuota|solo scatola|imballo vuoto|empty box)\b", text):
         return "packaging"
-    if re.search(r"\b(ventola|dissipatore|backplate|waterblock|ricambio|replacement fan)\b", clean(title)):
+    if (re.search(r"\b(ventola|dissipatore|backplate|waterblock|ricambio|replacement fan)\b", name)
+            or re.match(r"^(?:solo )?(?:display|schermo|batteria)\b", name)):
         return "part"
     if re.search(r"\b(guasto|guasta|non funzionante|for parts|difettoso)\b", text):
         return "broken"
-    if re.search(r"\b(pc gaming|pc completo|desktop gaming|lotto)\b", clean(title)):
+    if re.search(r"\b(pc gaming|pc completo|desktop gaming|lotto)\b", name):
         return "lot"
-    if re.search(r"\b(cavo|supporto|adattatore)\b", clean(title)):
+    alone = re.sub(rf"\b(?:con {ACCESSORIES}|{ACCESSORIES} inclus[oaie])\b", "", name)
+    if re.search(rf"\b{ACCESSORIES}\b", alone):
         return "accessory"
     return "single"
 
@@ -96,6 +135,9 @@ def match(offer, products):
     text = clean(f"{title} {description} {offer.get('ocr', '')}")
     text = re.sub(r"\b(rx \d{4})(xtx|xt)\b", r"\1 \2", text)
     text = re.sub(r"\bswitch modello oled\b", "switch oled", text)
+    storage = {int(size) * (1024 if unit == "tb" else 1)
+               for size, unit in re.findall(r"\b(\d{1,4})\s*(gb|tb)\b", text)
+               if unit == "tb" or int(size) >= 64}
     candidates = []
     for key, product in products.items():
         if (kind == "lot" and product["category"] != "PC") or (kind != "lot" and product["category"] == "PC" and "pc" not in text.split()):
@@ -110,6 +152,9 @@ def match(offer, products):
             reasons.append("alias completo")
             score = max(score, 83)
         attrs = product.get("attrs", {})
+        if (expected := attrs.get("storage_gb")) and score:
+            if (storage and storage != {expected}) or (not storage and score < 100):
+                conflicts.append("capacità diversa o non identificata")
         chip = clean(attrs.get("chip", ""))
         observed_chip = re.search(r"\b(?:rtx \d{4}(?: ti super| ti| super)?|rx \d{4}(?: xtx| xt| gre)?)\b", text)
         if observed_chip and chip:

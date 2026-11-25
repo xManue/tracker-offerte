@@ -41,6 +41,41 @@ def test_existing_and_new_catalog_models_match_without_merging_variants(sessions
         assert match({"title": "Makita DHP484Z corpo macchina"}, products)["product_id"] == "makita-dhp484"
 
 
+def test_november_catalog_keeps_storage_editions_and_accessories_separate(sessions):
+    with sessions.begin() as session:
+        seed_catalog(session, "real")
+        products = catalog(session, "real")
+        cases = {
+            "Apple iPhone 15 5G 128GB Blu usato": "iphone-15-128",
+            "Apple iPhone 16 128GB Nero Usato in scatola con cavo originale, batteria 95%": "iphone-16-128",
+            "iPhone 16 128GB con cover inclusa": "iphone-16-128",
+            "SAMSUNG GALAXY A56 5G 8 GB RAM RICONDIZIONATO 128GB": "galaxy-a56-128",
+            "Console Nintendo Switch 2 Edizione Standard 256GB con Joy-Con Magnetici": "switch-2-standard",
+            "Sony PS5 Slim Edizione Digitale 825gb Console con DualSense bianco": "ps5-slim-digital-825",
+            "Controller Originale Sony Playstation 5 Ps5 DualSense Wireless Bianco Come Nuovo": "dualsense-white",
+            "iPhone 16 256GB": None,
+            "iPhone 16 128GB / 256GB": None,
+            "iPhone 16 Pro Max 128GB": None,
+            "iPhone 16E 128GB": None,
+            "iPhone 15 128GB iCloud bloccato": None,
+            "Cover originale iPhone 16 128GB": None,
+            "Display iPhone 15 128GB": None,
+            "Samsung Galaxy A56 5G 256GB": None,
+            "Nintendo Switch 2 con batteria rimovibile BEE-001(-01)": None,
+            "Nintendo Switch 2 + Mario Kart World": None,
+            "Nintendo Switch 2 256GB senza dock e senza Joy-Con": None,
+            "PS5 Slim Digital Edition 1TB": None,
+            "PS5 Slim Digital Edition 825GB senza controller": None,
+            "Sony PS5 Slim con lettore 1TB": "ps5-slim-disc",
+            "DualSense Edge Bianco": None,
+            "DualSense Bianco TMR Hall Effect": None,
+        }
+        for title, expected in cases.items():
+            assert match({"title": title}, products)["product_id"] == expected, title
+        assert match({"title": "iPhone 16 128 GB", "description": "256 GB"}, products)["product_id"] is None
+        assert not watches(session, "real")
+
+
 def test_worker_repeats_selected_marketplaces_and_pauses_existing_jobs(sessions, monkeypatch):
     for source in ("SUBITO", "VINTED", "AMAZON"):
         monkeypatch.setenv(f"TRACKER_FEED_{source}_URL", f"https://fixture.test/{source.casefold()}")
