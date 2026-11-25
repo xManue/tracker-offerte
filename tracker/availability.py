@@ -27,7 +27,7 @@ def listing_availability(session, mode):
             evidence = previous
         availability[key] = Availability(
             evidence.data["status"], datetime.fromisoformat(item.data["observed_at"]),
-            datetime.fromisoformat(evidence.data["observed_at"]),
+            datetime.fromisoformat(evidence.data["observed_at"]), item.effective_at,
         )
     return availability
 
@@ -37,6 +37,7 @@ class Availability:
     status: str
     checked_at: datetime
     evidence_at: datetime
+    period: datetime
 
 
 def save_listing_availability(session, source, identifier, url, status, request_id, period, observed_at, clock):

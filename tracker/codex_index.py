@@ -60,7 +60,7 @@ def recent_listings(session, target, clock):
     return {item.external_id: item for item in rows}
 
 
-def apply_checks(session, target, hits, checks, observed_at, clock):
+def apply_checks(session, target, hits, checks, identity, observed_at, clock):
     source = target["source"]
     listings = recent_listings(session, target, clock)
     period = datetime.fromtimestamp(target["period"], tz=UTC)
@@ -76,7 +76,7 @@ def apply_checks(session, target, hits, checks, observed_at, clock):
             continue
         identifier, url = link
         seen.add(identifier)
-        save_listing_availability(session, source, identifier, url, observed, target["id"],
+        save_listing_availability(session, source, identifier, url, observed, identity,
                                   period, observed_at, clock)
 
 
@@ -104,36 +104,43 @@ def synchronize(sessions, directory=None, clock=None):
             payload = json.loads(filename.read_text(encoding="utf-8-sig"))
         except (FileNotFoundError, PermissionError, UnicodeError, ValueError):
             continue
-        hits = payload.get("hits") if isinstance(payload, dict) else payload
+        target = pending[key]
+        source = target["source"]
+        hits = payload.get("hits", False) if isinstance(payload, dict) else payload
+        checks_only = isinstance(payload, dict) and hits is None
+        if checks_only:
+            hits = []
         checks = payload.get("checks", []) if isinstance(payload, dict) else []
         if not isinstance(hits, list) or len(hits) > 40 or not isinstance(checks, list) or len(checks) > CHECK_LIMIT:
             continue
-        target = pending[key]
-        source = target["source"]
+        if checks_only and (source not in CHECK_SOURCES or not checks):
+            continue
         with sessions.begin() as session:
             if key in targets(session, clock, previous=True):
-                matched = save_index_results(session, "real", source, target["product"],
-                                             catalog(session, "real"), hits, provider="codex_web_search")
-                if source in CHECK_SOURCES:
+                if not checks_only:
+                    matched = save_index_results(session, "real", source, target["product"],
+                                                 catalog(session, "real"), hits, provider="codex_web_search")
+                    record(session, "real", "collection", source, key,
+                           {"transport": "Indice web Codex", "status": "success", "query": target["query"],
+                            "received": len(hits), "matched": matched, "rejected": 0, "page": 1})
+                if source in CHECK_SOURCES and (hits or checks):
                     observed_at = min(clock, datetime.fromtimestamp(info.st_mtime, tz=UTC))
-                    apply_checks(session, target, hits, checks, observed_at, clock)
-                record(session, "real", "collection", source, key,
-                       {"transport": "Indice web Codex", "status": "success", "query": target["query"],
-                        "received": len(hits), "matched": matched, "rejected": 0, "page": 1})
+                    identity = f"{key}:checks" if checks_only else key
+                    apply_checks(session, target, hits, checks, identity, observed_at, clock)
         with suppress(PermissionError):
             filename.unlink(missing_ok=True)
     with sessions() as session:
         ready = targets(session, clock)
         previous_checks = listing_availability(session, "real") if ready else {}
         for target in ready.values():
-            target.pop("period")
+            period = datetime.fromtimestamp(target.pop("period"), tz=UTC)
             source = target["source"]
             if source not in CHECK_SOURCES:
                 continue
             candidates = []
             for identifier, item in recent_listings(session, target, clock).items():
                 previous = previous_checks.get((source, identifier))
-                if previous and previous.status in {"sold", "unavailable"}:
+                if previous and (previous.status in {"sold", "unavailable"} or utc(previous.period) >= period):
                     continue
                 candidates.append((utc(previous.checked_at) if previous else utc(item.known_at) - CHECK_AGE,
                                    identifier, item.data["url"]))

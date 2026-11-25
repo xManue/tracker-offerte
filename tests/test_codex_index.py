@@ -90,14 +90,19 @@ def test_availability_keeps_archive_and_reopens_released_listings(sessions, monk
 
         clock += timedelta(minutes=15)
         synchronize(sessions, tmp_path, clock)
-        assert set(respond(clock, {"hits": [], "checks": [
+        assert set(respond(clock, {"hits": None, "checks": [
             {"url": first, "status": "unknown"},
             {"url": second, "status": "sold"},
             {"url": unrelated, "status": "available"},
         ]})) == {first, second}
+        with sessions() as session:
+            assert len(events(session, "real", "collection")) == 1
         alerts = client.get("/real/alerts").text
         assert first not in alerts and second not in alerts
         assert "Annunci non disponibili (2)" in alerts
+        assert respond(clock, {"hits": []}) == []
+        with sessions() as session:
+            assert len(events(session, "real", "collection")) == 2
 
         clock += timedelta(minutes=15)
         synchronize(sessions, tmp_path, clock)
