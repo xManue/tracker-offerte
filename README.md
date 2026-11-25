@@ -1,6 +1,6 @@
 # Mega Tracker di Offerte
 
-Radar locale per trovare acquisti e confrontare i possibili canali di rivendita. Il catalogo iniziale copre poche varianti RTX 4070 e i componenti di un PC AM4. La demo è sintetica. L’archivio reale parte vuoto, con lo stesso catalogo.
+Radar locale per trovare acquisti e confrontare i possibili canali di rivendita. Il catalogo include GPU, CPU e componenti AM4, console, un set LEGO e un utensile. La demo è sintetica e resta concentrata sulle RTX 4070 e sul PC AM4. L’archivio reale parte con il catalogo e può essere alimentato in automatico.
 
 ## Avvio
 
@@ -55,25 +55,34 @@ Imposta i costi del tuo account con `TRACKER_FEE_<FONTE>` e `TRACKER_OUTBOUND_<F
 | Piattaforma | Acquisto | Rivendita |
 | --- | --- | --- |
 | eBay Italia | Browse API, feed o file | Confronti da vendite importate, bozza, esportazione e accesso all’area vendita |
-| Subito, Vinted, Amazon Italia, AliExpress | Ricerca diretta e import manuale. Automazione tramite feed autorizzato | Confronti da vendite importate e bozze per canale |
+| Subito | Lettura automatica degli avvisi email delle ricerche salvate, feed autorizzato o file | Confronti da vendite importate e bozze |
+| Amazon Italia | Creators API con approvazione di Amazon, feed autorizzato o file | Confronti da vendite importate e bozze |
+| AliExpress | Affiliate API TOP, feed autorizzato o file | Confronti da vendite importate e bozze |
+| Vinted | Feed di ricerca autorizzato. Il lettore email è utilizzabile se il canale effettivamente invia annunci con link diretti | Confronti da vendite importate e bozze |
 | Wallapop, Facebook Marketplace | Stesso flusso tramite ricerca diretta, file o feed autorizzato | Confronti da vendite importate e bozze |
 | Altri provider | Configurabili da CLI con feed e permesso per fonte | Comparabili importati con campo `destination` |
 
 Per eBay, configura `EBAY_CLIENT_ID` ed `EBAY_CLIENT_SECRET` di produzione. La Browse API restituisce inserzioni attive. Per i prezzi pagati importa gli ordini o confronti ottenuti legittimamente. Puoi controllare i confronti con Ricerca prodotti nel tuo account eBay. [eBay Browse API](https://developer.ebay.com/api-docs/buy/api-browse.html)
 
-Subito prevede importazioni professionali degli annunci tramite gli strumenti o i gestionali autorizzati. Vinted disciplina la vendita commerciale e le categorie ammesse. Amazon offre la Creators API per gli account idonei. Questi percorsi richiedono il relativo accesso e la verifica degli usi consentiti prima di raccogliere e conservare dati. [Subito PRO](https://info.subito.it/policies/subito-condizioni-generali.htm), [Vinted](https://www.vinted.it/help/4/1120-commercieel-verkopen), [Amazon Creators API](https://programma-affiliazione.amazon.it/creatorsapi/docs/en-us/api-reference/operations/search-items)
+Per **Subito**, salva le ricerche sul sito e attiva gli avvisi via email. Fai recapitare questi avvisi in una cartella IMAP dedicata e imposta `TRACKER_MAIL_SUBITO_HOST`, `_USER`, `_PASSWORD`, `_FOLDER` e `_SENDER` (indirizzo esatto del mittente). Usa una password per applicazione se prevista dal tuo provider. Il worker legge la cartella in TLS e in sola lettura, riprende dagli UID già visti e salva i dati normalizzati di annunci con un link diretto riconoscibile. La frequenza di invio resta quella di Subito. [Ricerche salvate](https://assistenza.subito.it/hc/it/articles/360002172138-Salvare-una-ricerca), [Condizioni del servizio](https://info.subito.it/policies/condizioni-generali.htm)
+
+Per **Amazon**, abilita `AMAZON_CREATORS_TRACKER_APPROVED=1` se Amazon ha approvato l’uso di questi dati per il tracker, quindi imposta `AMAZON_CREATORS_ID`, `_SECRET` e `_TAG`. L’adattatore usa le credenziali europee e cerca sul mercato italiano. Per **AliExpress**, imposta `ALIEXPRESS_TOP_KEY`, `_SECRET` e `ALIEXPRESS_TRACKING_ID` da un’app abilitata alla ricerca Affiliate TOP. La ricerca richiede risultati per la consegna in Italia e importi in EUR. In entrambi i casi il prezzo di catalogo resta indicativo se manca il costo di spedizione. [Amazon Creators API](https://programma-affiliazione.amazon.it/creatorsapi/docs/en-us/api-reference/operations/search-items), [Politiche Amazon Associates](https://affiliate-program.amazon.com/help/operating/policies), [AliExpress Product Query](https://developer.alibaba.com/docs/api.htm?apiId=45803)
+
+La guida di **Vinted** descrive un contatore di nuovi annunci all’apertura della ricerca salvata. Per la raccolta programmata con copertura della ricerca, configura un feed autorizzato che restituisca le inserzioni per parola chiave. Il lettore email è riutilizzabile sui marketplace inclusi quando una fonte invia effettivamente messaggi con titoli e link diretti delle offerte, sostituendo `SUBITO` nelle variabili con la fonte corrispondente. [Ricerche salvate su Vinted](https://www.vinted.it/help/392/435-save-your-searches)
 
 Per attivare un feed imposta `TRACKER_FEED_<FONTE>_URL`, `_TOKEN` facoltativo e `_KIND=sale` se restituisce vendite. Il tracker invia `q` e il cursore. Il formato di risposta è `{"items":[...],"next_cursor":"..."}`. I campi delle righe sono gli stessi degli import manuali. Per Soldgraph serve un feed compatibile o un adattatore basato sul contratto del provider. La configurazione di esempio contiene segnaposto.
 
-Attiva la conservazione e la frequenza da **Sorgenti** o CLI:
+In **Dati reali → Sorgenti → Prodotti monitorati** seleziona un prodotto e i marketplace, poi imposta la frequenza e le soglie. I monitoraggi si possono modificare o mettere in pausa. Il worker usa la frequenza più breve delle ricerche che condividono la stessa casella di una fonte. Per gli avvisi di margine servono costo completo, disponibilità e confronti sufficienti. Se selezioni anche le offerte da verificare, queste appaiono nella stessa pagina con ciò che manca.
+
+Per attivare conservazione e monitoraggio da CLI:
 
 ```sh
 tracker source ebay --allow-history
-tracker watch ebay "RTX 4070" --minutes 60
+tracker monitor rtx4070-asus-dual --source ebay --source subito --minutes 60 --max-cost 280 --min-profit 25 --signals
 tracker collect
 ```
 
-L’area Inventario registra scelta del canale, prezzi, esiti, costi e resi. Le bozze si esportano per la pubblicazione manuale. Se configuri e abiliti Telegram, il worker invia solo gli avvisi reali che superano la soglia. Un esito incerto resta visibile in coda.
+Lascia attivo il servizio worker, incluso in Docker Compose. I risultati sono visibili nella pagina **Avvisi**. Telegram si può attivare in seguito con `TRACKER_TELEGRAM_ENABLED=1` e le credenziali del canale. L’area Inventario registra canale, prezzi, esiti, costi e resi. Le bozze si esportano per la pubblicazione manuale.
 
 ## Import e archivio per l’AI
 

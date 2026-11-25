@@ -7,7 +7,8 @@ from uuid import uuid4
 import httpx
 from sqlalchemy import and_, or_, select, update
 
-from .connectors import FetchError, collect, configured, schedule
+from .connectors import FetchError, collect, direct_connection, schedule
+from .monitoring import save_signal, selection_for
 from .db import Event, Job, now
 from .store import enqueue, events, latest, record, utc
 from .value import assess, dec, save_assessment
@@ -31,17 +32,24 @@ def claim(session, mode):
 
 
 def snapshot_alert(session, mode, offer, assessment):
+    accepted, selection = selection_for(session, mode, offer, assessment)
+    if not accepted:
+        return
+    minimum = dec(selection["min_profit"]) if selection else None
+    if minimum is None:
+        minimum = Decimal(os.getenv("TRACKER_MIN_PROFIT", "25"))
+    save_signal(session, mode, offer, assessment, selection, minimum)
     if assessment["status"] != "available" or not assessment["estimates"]:
         return
     if utc(offer.effective_at) < now() - timedelta(hours=24):
         return
     best = assessment["estimates"][0]
     value = best["margin"]
-    minimum = Decimal(os.getenv("TRACKER_MIN_PROFIT", "25"))
     if not value or dec(value["profit"]) < minimum or best["confidence"] != "buona":
         return
-    has_point_check = (mode == "real" and offer.source == "ebay" and configured("ebay")
-                       and not os.getenv("TRACKER_FEED_EBAY_URL"))
+    if selection and selection["max_cost"] is not None and dec(value["purchase"]) > dec(selection["max_cost"]):
+        return
+    has_point_check = mode == "real" and offer.source == "ebay" and direct_connection("ebay") == "Browse API"
     if has_point_check and (offer.data.get("checked_by") != "detail" or
                             utc(offer.effective_at) < now() - timedelta(minutes=30)):
         bucket = int(now().timestamp()) // 1800
@@ -57,7 +65,8 @@ def snapshot_alert(session, mode, offer, assessment):
              "purchase": value["purchase"], "snapshot": assessment}
     window = int(now().timestamp() // max(1, cooldown.total_seconds()))
     identifier = record(session, mode, "alert", offer.source, alert_id, alert, identity=f"profit:{minimum}:{window}")
-    if identifier and mode == "real" and os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"):
+    if (identifier and mode == "real" and os.getenv("TRACKER_TELEGRAM_ENABLED") == "1"
+            and os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID")):
         enqueue(session, mode, "telegram", f"telegram:{identifier}", {"alert": identifier})
 
 
@@ -79,7 +88,7 @@ def snapshot_request_alerts(session, mode, offer, assessment):
 
 
 def execute(session, job, client):
-    if job.kind in {"discover", "refresh"}:
+    if job.kind in {"discover", "refresh", "mail"}:
         collect(session, job.mode, job, client)
     elif job.kind == "evaluate":
         found = [row for row in events(session, job.mode, "offer", source=job.data["source"], external_id=job.data["id"])]
@@ -109,6 +118,10 @@ def send_telegram(sessions, job, client):
     with sessions.begin() as session:
         active = session.get(Job, job.id, with_for_update=True)
         if active.lease_token != job.lease_token or active.status != "running":
+            return
+        if os.getenv("TRACKER_TELEGRAM_ENABLED") != "1":
+            active.status = "cancelled"
+            active.error = None
             return
         token = os.getenv("TELEGRAM_BOT_TOKEN")
         chat = os.getenv("TELEGRAM_CHAT_ID")
@@ -160,7 +173,7 @@ def one(sessions, mode, client):
             active.error = str(error)[:240] if isinstance(error, FetchError) else type(error).__name__
             active.run_at = now() + timedelta(seconds=delay)
             active.lease_until = None
-            if active.kind in {"discover", "refresh"}:
+            if active.kind in {"discover", "refresh", "mail"}:
                 record(session, mode, "collection_error", active.data["source"], f"{active.id}:{active.attempts}",
                        {"status": active.status, "message": active.error, "kind": active.kind})
                 if active.kind == "refresh" and active.status == "failed":

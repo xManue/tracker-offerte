@@ -25,6 +25,37 @@ SEED = (
      "aliases": ["pc ryzen 5600 rtx 4070"], "attrs": {}},
 )
 
+EXPANSION = (
+    {"id": "rtx3060-12", "name": "GeForce RTX 3060 12 GB", "category": "GPU", "brand": "NVIDIA",
+     "aliases": ["rtx 3060 12 gb", "rtx 3060 12gb", "rtx 3060 12g"], "search_query": "RTX 3060 12 GB",
+     "attrs": {"chip": "RTX 3060", "memory_gb": 12}},
+    {"id": "rtx3070", "name": "GeForce RTX 3070", "category": "GPU", "brand": "NVIDIA",
+     "aliases": ["rtx 3070"], "attrs": {"chip": "RTX 3070", "memory_gb": 8}},
+    {"id": "rtx4060", "name": "GeForce RTX 4060", "category": "GPU", "brand": "NVIDIA",
+     "aliases": ["rtx 4060"], "attrs": {"chip": "RTX 4060", "memory_gb": 8}},
+    {"id": "rtx5070", "name": "GeForce RTX 5070", "category": "GPU", "brand": "NVIDIA",
+     "aliases": ["rtx 5070"], "attrs": {"chip": "RTX 5070", "memory_gb": 12}},
+    {"id": "rx6700xt", "name": "Radeon RX 6700 XT", "category": "GPU", "brand": "AMD",
+     "aliases": ["rx 6700 xt", "rx 6700xt"], "attrs": {"chip": "RX 6700 XT", "memory_gb": 12}},
+    {"id": "rx7800xt", "name": "Radeon RX 7800 XT", "category": "GPU", "brand": "AMD",
+     "aliases": ["rx 7800 xt", "rx 7800xt"], "attrs": {"chip": "RX 7800 XT", "memory_gb": 16}},
+    {"id": "ryzen5700x3d", "name": "AMD Ryzen 7 5700X3D", "category": "CPU", "brand": "AMD",
+     "aliases": ["ryzen 7 5700x3d", "ryzen 5700x3d"], "attrs": {"socket": "AM4"}},
+    {"id": "ps5-slim-disc", "name": "PlayStation 5 Slim con lettore", "category": "Console", "brand": "Sony",
+     "aliases": ["ps5 slim con lettore", "playstation 5 slim con lettore", "ps5 slim disc"],
+     "conflict_terms": ["digital edition", "senza lettore", "versione digitale"], "attrs": {"drive": "disc"}},
+    {"id": "xbox-series-x", "name": "Xbox Series X con lettore", "category": "Console", "brand": "Microsoft",
+     "aliases": ["xbox series x con lettore", "xbox series x disc", "xbox series x nero"],
+     "conflict_terms": ["digital edition", "senza lettore", "versione digitale"], "attrs": {"drive": "disc"}},
+    {"id": "switch-oled", "name": "Nintendo Switch OLED", "category": "Console", "brand": "Nintendo",
+     "aliases": ["nintendo switch oled", "switch oled"], "conflict_terms": ["switch lite"],
+     "attrs": {"edition": "OLED"}},
+    {"id": "lego-75375", "name": "LEGO 75375 Millennium Falcon", "category": "LEGO", "brand": "LEGO",
+     "mpn": "75375", "aliases": ["lego 75375"], "attrs": {"set_number": "75375"}},
+    {"id": "makita-dhp484", "name": "Makita DHP484", "category": "Utensili", "brand": "Makita",
+     "mpn": "DHP484", "aliases": ["makita dhp484", "makita dhp484z"], "attrs": {"kit": "corpo macchina"}},
+)
+
 
 def clean(value):
     return " ".join(re.findall(r"[a-z0-9]+", unicodedata.normalize("NFKD", value).lower()))
@@ -34,9 +65,12 @@ def catalog(session, mode, cutoff=None):
     return {row.external_id: row.data for row in latest(session, mode, "product", cutoff=cutoff)}
 
 
-def seed_catalog(session, mode, known=None):
-    for product in SEED:
-        record(session, mode, "product", "local", product["id"], product, effective=known, known=known)
+def seed_catalog(session, mode, known=None, *, include_expansion=True):
+    existing = catalog(session, mode)
+    products = SEED + EXPANSION if include_expansion else SEED
+    for product in products:
+        if product["id"] not in existing:
+            record(session, mode, "product", "local", product["id"], product, effective=known, known=known)
 
 
 def classify(title, description=""):
@@ -60,6 +94,7 @@ def match(offer, products):
     if kind in {"part", "accessory", "packaging", "broken"}:
         return {"product_id": None, "type": kind, "candidates": []}
     text = clean(f"{title} {description} {offer.get('ocr', '')}")
+    text = re.sub(r"\b(rx \d{4})(xtx|xt)\b", r"\1 \2", text)
     candidates = []
     for key, product in products.items():
         if (kind == "lot" and product["category"] != "PC") or (kind != "lot" and product["category"] == "PC" and "pc" not in text.split()):
@@ -75,7 +110,7 @@ def match(offer, products):
             score = max(score, 83)
         attrs = product.get("attrs", {})
         chip = clean(attrs.get("chip", ""))
-        observed_chip = re.search(r"\brtx \d{4}(?: ti super| ti| super)?\b", text)
+        observed_chip = re.search(r"\b(?:rtx \d{4}(?: ti super| ti| super)?|rx \d{4}(?: xtx| xt| gre)?)\b", text)
         if observed_chip and chip:
             if chip != observed_chip.group():
                 conflicts.append("chip diverso")
@@ -85,6 +120,8 @@ def match(offer, products):
         memory = re.search(r"\b(\d+)\s*gb\b", text)
         if chip and memory and attrs.get("memory_gb") != int(memory.group(1)):
             conflicts.append("memoria diversa")
+        conflicts.extend(f"variante incompatibile ({term})" for term in product.get("conflict_terms", ())
+                         if f" {clean(term)} " in f" {text} ")
         brand = clean(product["brand"])
         if brand and brand in text.split() and score:
             score = min(100, score + 8)

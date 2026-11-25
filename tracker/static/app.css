@@ -84,6 +84,8 @@ button:hover, .button:hover { background: var(--deep); color: #fff; }
 .grow { flex: 1 1 220px; }
 .check { display: flex; flex-direction: row; gap: 8px; align-items: center; min-height: 36px; }
 .checks { display: grid; align-content: start; }
+.source-checks { margin: 0; border: 1px solid var(--line); border-radius: 7px; }
+.source-checks legend { color: var(--muted); font-size: .9rem; font-weight: 640; }
 .filters { padding: 8px 20px 16px; }
 .filter-more { width: 100%; margin: 0; border: 0; }
 .filter-more[open] { padding-top: 9px; border-top: 1px solid var(--line); }

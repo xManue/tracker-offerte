@@ -1,14 +1,48 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import source_options, status %}
+{% from 'macros.html' import source_options, product_options, status %}
 {% block title %}Sorgenti{% endblock %}
 {% block content %}
 <div class="heading"><div><div class="eyebrow">Raccolta e qualità</div><h1>Sorgenti</h1><p>Cerca sui marketplace, importa dati e controlla lo stato delle raccolte.</p></div></div>
+{% macro product_form(id='', saved=none) %}
+  <form class="stack" method="post" action="/{{ mode }}/sources/products">
+    {% if saved %}<input type="hidden" name="product_id" value="{{ id }}">
+    {% else %}<label>Prodotto<select name="product_id" required><option value="">Scegli dal catalogo ({{ products|length }})</option>{{ product_options(products) }}</select></label>{% endif %}
+    <div class="row">
+      <label class="grow">Parole da cercare<input name="query" maxlength="120" value="{{ saved.query if saved else '' }}" placeholder="Usa il nome del prodotto"></label>
+      <label>Ogni (minuti)<input type="number" name="minutes" min="15" max="10080" required value="{{ saved.minutes if saved else 60 }}"></label>
+      <label>Costo massimo €<input name="max_cost" inputmode="decimal" value="{{ saved.max_cost or '' if saved else '' }}" placeholder="Facoltativo"></label>
+      <label>Margine minimo €<input name="min_profit" inputmode="decimal" value="{{ saved.min_profit or '' if saved else '' }}" placeholder="Soglia generale"></label>
+    </div>
+    <fieldset class="source-checks"><legend>Marketplace da monitorare</legend><div class="row">
+      {% set selected = saved.sources if saved else ['ebay', 'subito', 'vinted', 'amazon', 'aliexpress'] %}
+      {% for key in marketplaces %}<label class="check"><input type="checkbox" name="sources" value="{{ key }}"{% if key in selected %} checked{% endif %}> {{ channels[key].name }}</label>{% endfor %}
+    </div></fieldset>
+    <label class="check"><input type="checkbox" name="signals" value="true"{% if not saved or saved.signals %} checked{% endif %}> Mostra anche offerte da verificare con dati incompleti</label>
+    <button>Salva monitoraggio</button>
+  </form>
+{% endmacro %}
+<section class="panel padded">
+  <h2>Prodotti monitorati</h2>
+  <p>Il worker ripete le ricerche sulle fonti collegate. Gli esiti compaiono in <a href="/{{ mode }}/alerts">Avvisi</a>.</p>
+  {% if mode == 'demo' %}<p class="muted">Le impostazioni di questa demo si possono provare senza contattare i marketplace. Usa Dati reali per collegare le fonti.</p>{% endif %}
+  {% for id, item in product_watches.items() %}
+  <article class="inset">
+    <div class="mini-row"><span><strong>{{ products[id].name }}</strong><small>{{ item.data.query }} · Ogni {{ item.data.minutes }} min</small></span><span>{{ 'Attivo' if item.data.enabled else 'In pausa' }}</span></div>
+    <small>{% for source in item.data.sources %}{{ channels[source].name }}{% if mode == 'real' %} ({{ connections[source]|join(' + ') if connections[source] and policies.get(source, {}).get('history') else 'da collegare' }}){% endif %}{{ ' · ' if not loop.last else '' }}{% endfor %}</small>
+    <details><summary>Modifica monitoraggio</summary>{{ product_form(id, item.data) }}</details>
+    <form class="row" method="post" action="/{{ mode }}/sources/products/{{ id }}/state">
+      <button class="secondary" name="enabled" value="{{ 'false' if item.data.enabled else 'true' }}">{{ 'Metti in pausa' if item.data.enabled else 'Riattiva' }}</button>
+    </form>
+  </article>
+  {% endfor %}
+  <details{% if not product_watches %} open{% endif %}><summary>Aggiungi un prodotto</summary>{{ product_form() }}</details>
+</section>
 <section class="panel padded">
   <h2>Ricerca multicanale</h2>
   <form class="row" method="get"><label class="grow">Parola chiave<input name="q" value="{{ query }}" required maxlength="120"></label><button>Cerca canali</button></form>
   <div class="channel-grid">
     {% for key, item in channels.items() if item.search %}
-    <article class="inset"><h3>{{ item.name }}</h3><p>{{ item.method }} · {% if configured[key] and policies.get(key, {}).get('history') and mode == 'real' %}Raccolta configurata{% elif configured[key] and mode == 'real' %}Conservazione da abilitare{% else %}Ricerca manuale{% endif %}</p>
+    <article class="inset"><h3>{{ item.name }}</h3><p>{{ connections[key]|join(' + ') if connections[key] and mode == 'real' else item.method }} · {% if connections[key] and policies.get(key, {}).get('history') and mode == 'real' %}Raccolta configurata{% elif connections[key] and mode == 'real' %}Conservazione da abilitare{% else %}Fonte da collegare{% endif %}</p>
       <div class="links"><a target="_blank" rel="noopener noreferrer" href="{{ item.search_url(query) }}">Cerca offerte</a><a target="_blank" rel="noopener noreferrer" href="{{ item.seller }}">Area vendita</a></div>
     </article>
     {% endfor %}
@@ -29,7 +63,7 @@
   <a class="spaced" href="/static/esempio-vendite.csv" download>Scarica CSV vendite di esempio</a>
 </section>
 <section class="panel padded">
-  <h2>Monitoraggio automatico</h2>
+  <h2>Monitoraggio per parola chiave</h2>
   <form class="stack" method="post" action="/{{ mode }}/sources/watch">
     <label>Ricerca da monitorare<input name="query" required maxlength="120" value="{{ query }}"></label>
     <div class="row"><label>Fonte<select name="source">{{ source_options(channels) }}</select></label><label>Ogni (minuti)<input name="minutes" type="number" min="15" max="10080" value="60"></label></div>

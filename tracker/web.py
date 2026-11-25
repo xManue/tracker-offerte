@@ -17,10 +17,11 @@ from sqlalchemy import select
 
 from .catalog import catalog, match
 from .channels import CHANNELS, set_source, source_rules
-from .connectors import configured, watch
+from .connectors import connections, watch
 from .db import Event, Job, make_sessions, now
 from .documents import read_stock
 from .ingest import EXPECTED, ROME, amount, clean_text, date, parse_file, preview, write_rows
+from .monitoring import MARKETPLACES, save_watch, set_enabled, watches as product_watches
 from .operations import (check_build, component_estimates, draft_from_inventory, duplicate_candidates,
                          duplicate_groups, market_changes, offer_cards, plan_budget, price_scenarios,
                          reference, request_matches, transition_inventory)
@@ -40,6 +41,7 @@ LABELS = {
     "repriced": "Prezzo rivisto", "sold": "Venduto", "returned": "Reso", "confirmed": "Confermato",
     "matched": "Abbinato", "uncertain": "Esito incerto", "done": "Completato", "pending": "In attesa",
     "retry": "Da riprovare", "running": "In corso", "failed": "Errore",
+    "cancelled": "Annullato",
 }
 
 
@@ -287,8 +289,10 @@ def create_app(sessions=None):
     def sources(request: Request, mode: Mode, q: str = "RTX 4070"):
         with db() as session:
             sales = latest(session, mode, "sale")
-            return render(request, "sources", mode, query=q, configured={key: configured(key) for key in CHANNELS},
+            return render(request, "sources", mode, query=q, connections={key: connections(key) for key in CHANNELS},
                           policies=source_rules(session, mode), watches=latest(session, mode, "watch"),
+                          products=catalog(session, mode), product_watches=product_watches(session, mode),
+                          marketplaces=MARKETPLACES,
                           collections=events(session, mode, "collection")[-12:],
                           errors=events(session, mode, "collection_error")[-8:],
                           batches=events(session, mode, "import")[-10:],
@@ -301,6 +305,21 @@ def create_app(sessions=None):
                   minutes: int = Form(60, ge=15, le=10080)):
         with db.begin() as session:
             watch(session, mode, query.strip(), source, minutes)
+        return redirect(mode, "/sources")
+
+    @app.post("/{mode}/sources/products")
+    def add_product_watch(mode: Mode, product_id: str = Form(), sources: list[str] = Form(),
+                          minutes: int = Form(60, ge=15, le=10080), query: str = Form("", max_length=120),
+                          max_cost: str = Form(""), min_profit: str = Form(""), signals: bool = Form(False)):
+        with db.begin() as session:
+            save_watch(session, mode, product_id, sources, minutes, query=query, max_cost=max_cost,
+                       min_profit=min_profit, signals=signals)
+        return redirect(mode, "/sources")
+
+    @app.post("/{mode}/sources/products/{product_id}/state")
+    def product_watch_state(mode: Mode, product_id: str, enabled: bool = Form()):
+        with db.begin() as session:
+            set_enabled(session, mode, product_id, enabled)
         return redirect(mode, "/sources")
 
     @app.post("/{mode}/sources/policy")
@@ -369,6 +388,7 @@ def create_app(sessions=None):
     def alerts(request: Request, mode: Mode):
         with db() as session:
             return render(request, "alerts", mode, alerts=events(session, mode, "alert")[::-1],
+                          monitor_signals=events(session, mode, "monitor_signal")[::-1],
                           request_alerts=events(session, mode, "request_alert")[::-1])
 
     from .web_workflows import register

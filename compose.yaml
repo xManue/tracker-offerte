@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: tracker
       POSTGRES_PASSWORD: tracker-local
@@ -25,6 +26,7 @@ services:
         condition: service_healthy
   web:
     build: .
+    restart: unless-stopped
     env_file:
       - path: .env
         required: false
@@ -38,6 +40,7 @@ services:
         condition: service_completed_successfully
   worker:
     build: .
+    restart: unless-stopped
     env_file:
       - path: .env
         required: false

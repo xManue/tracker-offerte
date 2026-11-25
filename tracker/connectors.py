@@ -1,17 +1,18 @@
-import json
 import os
 import time
 from dataclasses import dataclass
 from datetime import timedelta
+from functools import lru_cache
 from urllib.parse import quote, urlsplit
 from uuid import uuid4
 
-import httpx
-
-from .channels import CHANNELS, source_rules
-from .db import now
+from .catalog import catalog, clean, match
+from .channels import source_rules
+from .db import Event, now
 from .ingest import preview, write_rows
-from .store import digest, enqueue, latest, record
+from .mail_alerts import MailError, fetch_messages, parse_message, settings as mail_settings
+from .monitoring import is_current, period_slot, schedule_search, watches
+from .store import digest, enqueue, events, latest, record
 
 
 class FetchError(RuntimeError):
@@ -135,13 +136,27 @@ class JsonFeed:
         return Page(rows, str(next_cursor) if next_cursor is not None else None)
 
 
-def configured(source):
+def direct_connection(source):
     suffix = source.upper().replace("-", "_")
     if os.getenv(f"TRACKER_FEED_{suffix}_URL"):
-        return True
-    return source == "ebay" and bool(os.getenv("EBAY_CLIENT_ID") and os.getenv("EBAY_CLIENT_SECRET"))
+        return "Feed JSON"
+    if source == "ebay" and os.getenv("EBAY_CLIENT_ID") and os.getenv("EBAY_CLIENT_SECRET"):
+        return "Browse API"
+    if source == "amazon" and os.getenv("AMAZON_CREATORS_TRACKER_APPROVED") == "1" and all(
+            os.getenv(key) for key in ("AMAZON_CREATORS_ID", "AMAZON_CREATORS_SECRET", "AMAZON_CREATORS_TAG")):
+        return "Creators API"
+    if source == "aliexpress" and all(
+            os.getenv(key) for key in ("ALIEXPRESS_TOP_KEY", "ALIEXPRESS_TOP_SECRET", "ALIEXPRESS_TRACKING_ID")):
+        return "Affiliate API"
+    return None
 
 
+def connections(source):
+    return [value for value in (direct_connection(source),
+            "Avvisi email" if mail_settings(source) else None) if value]
+
+
+@lru_cache(maxsize=32)
 def adapter(client, source):
     suffix = source.upper().replace("-", "_")
     if url := os.getenv(f"TRACKER_FEED_{suffix}_URL"):
@@ -149,16 +164,34 @@ def adapter(client, source):
         if kind not in {"offer", "sale"}:
             raise FetchError("Tipo di feed non valido", retry=False)
         return JsonFeed(client, url, os.getenv(f"TRACKER_FEED_{suffix}_TOKEN"), kind)
-    if configured(source) and source == "ebay":
+    connection = direct_connection(source)
+    if connection == "Browse API":
         return EbayBrowse(client, os.environ["EBAY_CLIENT_ID"], os.environ["EBAY_CLIENT_SECRET"])
+    if connection == "Creators API":
+        from .retail import AmazonCreators
+        return AmazonCreators(client, os.environ["AMAZON_CREATORS_ID"], os.environ["AMAZON_CREATORS_SECRET"],
+                              os.environ["AMAZON_CREATORS_TAG"])
+    if connection == "Affiliate API":
+        from .retail import AliExpressAffiliate
+        return AliExpressAffiliate(client, os.environ["ALIEXPRESS_TOP_KEY"], os.environ["ALIEXPRESS_TOP_SECRET"],
+                                   os.environ["ALIEXPRESS_TRACKING_ID"])
     raise FetchError("Connettore automatico da configurare", retry=False)
 
 
 def watch(session, mode, query, source, minutes=60):
     identifier = digest(f"{source}\n{query.casefold()}")[:24]
-    record(session, mode, "watch", source, identifier,
-           {"query": query, "minutes": minutes, "enabled": True}, identity=uuid4().hex)
+    data = {"query": query, "minutes": minutes, "enabled": True}
+    current = next((row for row in latest(session, mode, "watch")
+                    if row.source == source and row.external_id == identifier), None)
+    if current is None or current.data != data:
+        record(session, mode, "watch", source, identifier, data, identity=uuid4().hex)
     return identifier
+
+
+def active_subscriptions(session, mode):
+    subscriptions = [(row, (row.source,), True) for row in latest(session, mode, "watch")]
+    subscriptions.extend((row, row.data["sources"], False) for row in watches(session, mode).values())
+    return [(row, sources, legacy) for row, sources, legacy in subscriptions if row.data["enabled"]]
 
 
 def schedule(session, mode, timestamp=None):
@@ -166,20 +199,76 @@ def schedule(session, mode, timestamp=None):
         return
     timestamp = timestamp or now()
     rules = source_rules(session, mode)
-    for row in latest(session, mode, "watch"):
-        if not row.data["enabled"] or not configured(row.source) or not rules.get(row.source, {}).get("history"):
-            continue
-        bucket = int(timestamp.timestamp()) // (60 * row.data["minutes"])
-        run = f"{row.external_id}:{bucket}"
-        enqueue(session, mode, "discover", f"discover:{run}:start",
-                {"run": run, "query": row.data["query"], "source": row.source, "cursor": None, "page": 1})
+    inboxes = {}
+    for row, sources, _ in active_subscriptions(session, mode):
+        for source in sources:
+            if not rules.get(source, {}).get("history"):
+                continue
+            if direct_connection(source):
+                schedule_search(session, mode, timestamp, row, source)
+            if mail_settings(source):
+                minutes = row.data["minutes"]
+                inboxes[source] = min(minutes, inboxes.get(source, minutes))
+    for source, minutes in inboxes.items():
+        run = f"mail:{source}:{minutes}:{period_slot(timestamp, minutes)}"
+        enqueue(session, mode, "mail", run, {"source": source, "run": run, "page": 1})
+
+
+def collect_mail(session, mode, job):
+    source = job.data["source"]
+    config = mail_settings(source)
+    subscriptions = [(item, legacy) for item, sources, legacy in active_subscriptions(session, mode)
+                     if source in sources]
+    if config is None or not subscriptions:
+        return
+
+    checkpoint_id = digest("\n".join((config.host, config.user, config.folder, config.sender)))
+    snapshots = events(session, mode, "mail_cursor", source=source, external_id=checkpoint_id)
+    checkpoint = snapshots[-1].data if snapshots else {}
+    try:
+        validity, position, messages, more = fetch_messages(config, checkpoint)
+    except MailError as error:
+        raise FetchError(str(error), retry=error.retry) from error
+    timestamp = now()
+    rows = []
+    products = catalog(session, mode)
+    selected = {item.external_id for item, legacy in subscriptions if not legacy}
+    terms = [set(clean(item.data["query"]).split()) for item, legacy in subscriptions if legacy]
+    existing = {row.external_id: row.data for row in latest(session, mode, "offer") if row.source == source}
+    for _, raw in messages:
+        for row in parse_message(source, raw, config.sender, timestamp):
+            if row["external_id"] in existing and existing[row["external_id"]].get("checked_by") != "mail":
+                continue
+            product_id = match(row, products)["product_id"]
+            if product_id not in selected and not any(term <= set(clean(row["title"]).split()) for term in terms):
+                continue
+            rows.append((len(rows) + 1, row))
+    valid, errors = preview(rows, {}, "offer")
+    write_rows(session, mode, source, "offer", valid, errors, digest(job.key))
+    data = {"validity": validity, "uid": position}
+    if checkpoint != data:
+        record(session, mode, "mail_cursor", source, checkpoint_id, data)
+    record(session, mode, "collection", source, job.key, {
+        "query": "Avvisi email", "page": job.data["page"], "received": len(rows), "rejected": len(errors),
+        "messages": len(messages), "status": "partial" if errors else "success",
+    })
+    if more:
+        enqueue(session, mode, "mail", f"{job.data['run']}:{validity}:{position}",
+                {**job.data, "page": job.data["page"] + 1}, timestamp + timedelta(seconds=3))
 
 
 def collect(session, mode, job, client):
     payload = job.data
     source = payload["source"]
+    if job.kind == "discover" and payload.get("watch_event"):
+        subscription = session.get(Event, payload["watch_event"])
+        if subscription is None or not is_current(session, mode, subscription):
+            return
     if not source_rules(session, mode).get(source, {}).get("history"):
         raise FetchError("Conservazione dello storico da autorizzare nella fonte", retry=False)
+    if job.kind == "mail":
+        collect_mail(session, mode, job)
+        return
     connector = adapter(client, source)
     timestamp = now()
     if job.kind == "refresh":

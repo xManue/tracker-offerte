@@ -13,6 +13,7 @@ from .db import Event, Job, Reservation, make_sessions
 from .demo import seed
 from .documents import read_stock
 from .ingest import EXPECTED, amount, date, parse_file, preview, write_rows
+from .monitoring import DEFAULT_INTERVAL, MARKETPLACES, save_watch, set_enabled
 from .replay import replay
 from .store import canonical, digest
 from .value import dec
@@ -47,6 +48,16 @@ def parser():
     search.add_argument("source")
     search.add_argument("query")
     search.add_argument("--minutes", type=int, default=60)
+    monitor = cmds.add_parser("monitor")
+    mode_flag(monitor, "real")
+    monitor.add_argument("product")
+    monitor.add_argument("--source", choices=MARKETPLACES, action="append")
+    monitor.add_argument("--minutes", type=int, default=DEFAULT_INTERVAL)
+    monitor.add_argument("--query", default="")
+    monitor.add_argument("--max-cost", default="")
+    monitor.add_argument("--min-profit", default="")
+    monitor.add_argument("--signals", action="store_true")
+    monitor.add_argument("--pause", action="store_true")
 
     importing = cmds.add_parser("import")
     mode_flag(importing, "real")
@@ -124,6 +135,8 @@ def main():
                     if "local" not in source_rules(session, "real"):
                         set_source(session, "real", "local", history=True)
                 result = {"demo_seeded": seed(session)}
+                if action == "bootstrap":
+                    seed_catalog(session, "demo")
             elif action == "source":
                 set_source(session, args.mode, source_key(args.name), history=args.allow_history,
                            training=args.allow_training, note=args.note)
@@ -131,6 +144,14 @@ def main():
                 if not 15 <= args.minutes <= 10080 or not 2 <= len(args.query.strip()) <= 120:
                     raise ValueError("Termine o frequenza non validi")
                 result = {"watch": watch(session, args.mode, args.query.strip(), source_key(args.source), args.minutes)}
+            elif action == "monitor":
+                if args.pause:
+                    set_enabled(session, args.mode, args.product, False)
+                    result = {"product": args.product, "enabled": False}
+                else:
+                    result = {"watch": save_watch(session, args.mode, args.product, args.source or MARKETPLACES,
+                                                  args.minutes, query=args.query, max_cost=args.max_cost,
+                                                  min_profit=args.min_profit, signals=args.signals)}
             elif action == "import":
                 result = imported(session, args)
             elif action in {"dataset", "archive"}:
