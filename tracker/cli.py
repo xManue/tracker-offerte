@@ -6,7 +6,6 @@ from pathlib import Path
 
 from sqlalchemy import delete
 
-from .catalog import seed_catalog
 from .channels import CHANNELS, set_source, source_rules
 from .connectors import watch
 from .db import Event, Job, Reservation, make_sessions
@@ -15,6 +14,7 @@ from .documents import read_stock
 from .ingest import EXPECTED, amount, date, parse_file, preview, write_rows
 from .monitoring import DEFAULT_INTERVAL, MARKETPLACES, save_watch, set_enabled
 from .replay import replay
+from .runtime import bootstrap, run_local
 from .store import canonical, digest
 from .value import dec
 from .worker import run
@@ -28,6 +28,9 @@ def parser():
     command = argparse.ArgumentParser(prog="tracker")
     cmds = command.add_subparsers(dest="command", required=True)
     cmds.add_parser("bootstrap")
+    local = cmds.add_parser("run-local", help="Avvia il tracker e il worker dalla stessa configurazione")
+    local.add_argument("--port", type=int, default=8000)
+    local.add_argument("--env-file", type=Path)
     cmds.add_parser("seed-demo")
     reset = cmds.add_parser("reset-demo")
     reset.add_argument("--yes", action="store_true", required=True)
@@ -117,8 +120,16 @@ def imported(session, args):
 def main():
     root = parser()
     args = root.parse_args()
-    sessions = make_sessions()
     action = args.command
+    if action == "run-local":
+        try:
+            raise SystemExit(run_local(args.port, args.env_file))
+        except (OSError, ValueError) as error:
+            root.error(str(error))
+    sessions = make_sessions()
+    if action == "bootstrap":
+        print(json.dumps(bootstrap(sessions), ensure_ascii=False, indent=2))
+        return
     if action in {"worker", "collect"}:
         modes = ("demo", "real") if args.mode == "both" else (args.mode,)
         run(sessions, modes, once=action == "collect" or args.once)
@@ -126,17 +137,11 @@ def main():
     result = None
     try:
         with sessions.begin() as session:
-            if action in {"bootstrap", "seed-demo", "reset-demo"}:
+            if action in {"seed-demo", "reset-demo"}:
                 if action == "reset-demo":
                     for table in (Job, Reservation, Event):
                         session.execute(delete(table).where(table.mode == "demo"))
-                if action == "bootstrap":
-                    seed_catalog(session, "real")
-                    if "local" not in source_rules(session, "real"):
-                        set_source(session, "real", "local", history=True)
                 result = {"demo_seeded": seed(session)}
-                if action == "bootstrap":
-                    seed_catalog(session, "demo")
             elif action == "source":
                 set_source(session, args.mode, source_key(args.name), history=args.allow_history,
                            training=args.allow_training, note=args.note)

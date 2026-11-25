@@ -12,19 +12,20 @@ docker compose up --build
 
 Apri [la dashboard locale](http://127.0.0.1:8000/demo). Il servizio di migrazione prepara PostgreSQL e carica la demo. Il worker genera gli avvisi in pochi secondi. I dati restano nel volume PostgreSQL anche dopo `docker compose down`.
 
-Con Python 3.12 o successivo, per sviluppo o demo senza Docker:
+Con Python 3.12 o successivo, dalla cartella del progetto:
 
 ```sh
 python -m venv .venv
 # Attiva .venv con il comando della tua shell.
 python -m pip install -e ".[dataset,documents,test]"
-alembic upgrade head
-tracker bootstrap
-tracker worker --once
-uvicorn tracker.web:app --host 127.0.0.1 --port 8000
+tracker run-local
 ```
 
-Questa modalità usa SQLite in `data/tracker.db` per impostazione predefinita. Per la raccolta continua usa `tracker worker` in un secondo terminale. Con SQLite esegui un solo worker. Per le scansioni e le immagini installa Tesseract con i dati lingua `ita` ed `eng`. L’immagine Docker li include. Per caricare le variabili senza Docker esportale nella shell prima di avviare web e worker.
+`tracker run-local` legge `.env`, aggiorna il database e avvia interfaccia e worker. Le variabili già presenti nella shell hanno precedenza. L’interfaccia ascolta su `127.0.0.1:8000` e puoi scegliere una porta diversa con `--port`. Il worker viene riavviato se termina mentre l’interfaccia rimane attiva. Lascia il comando in esecuzione per ripetere le ricerche e rilancialo dopo un arresto del computer o una modifica al file di configurazione.
+
+Questa modalità usa SQLite in `data/tracker.db` per impostazione predefinita. Le impostazioni di monitoraggio e lo storico restano nel database fra due avvii. Con SQLite tieni un solo worker attivo. Per le scansioni e le immagini installa Tesseract con i dati lingua `ita` ed `eng`. L’immagine Docker li include.
+
+Per avviare interfaccia e worker come processi gestiti separatamente, esporta le variabili nei rispettivi ambienti e usa `alembic upgrade head` e `tracker bootstrap` prima di avviare `tracker worker` e `uvicorn tracker.web:app --host 127.0.0.1 --port 8000`.
 
 Per ricaricare solo la demo:
 
