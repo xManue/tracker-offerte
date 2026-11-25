@@ -21,7 +21,7 @@ def test_codex_manifests_and_results_follow_selected_products(sessions, monkeypa
     manifest = tmp_path / "requests.json"
     [request] = json.loads(manifest.read_text(encoding="utf-8"))["items"]
     assert request["source"] == "vinted"
-    title = "Nintendo Switch OLED | Vinted"
+    title = "Console Nintendo Switch – Modello OLED, Bianco | Vinted"
     result = tmp_path / "results" / f"{request['id']}.json"
     result.write_text(json.dumps([
         {"title": title, "url": "https://www.vinted.it/items/9471196434-nintendo-switch-oled?ref=sample"},

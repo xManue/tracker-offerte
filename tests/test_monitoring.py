@@ -34,6 +34,9 @@ def test_existing_and_new_catalog_models_match_without_merging_variants(sessions
         assert match({"title": "MSI RTX 4060 Ti 8 GB"}, products)["product_id"] is None
         assert match({"title": "RTX 3060 8 GB"}, products)["product_id"] is None
         assert match({"title": "Sony PS5 Slim Digital Edition"}, products)["product_id"] is None
+        assert match({"title": "Console Nintendo Switch – Modello OLED, Bianco"}, products)["product_id"] == "switch-oled"
+        assert match({"title": "Nintendo Switch 2 Modello OLED"}, products)["product_id"] is None
+        assert match({"title": "Solo scatola Nintendo Switch Modello OLED"}, products)["product_id"] is None
         assert match({"title": "Set LEGO 75375 Millennium Falcon"}, products)["product_id"] == "lego-75375"
         assert match({"title": "Makita DHP484Z corpo macchina"}, products)["product_id"] == "makita-dhp484"
 

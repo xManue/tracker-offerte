@@ -95,6 +95,7 @@ def match(offer, products):
         return {"product_id": None, "type": kind, "candidates": []}
     text = clean(f"{title} {description} {offer.get('ocr', '')}")
     text = re.sub(r"\b(rx \d{4})(xtx|xt)\b", r"\1 \2", text)
+    text = re.sub(r"\bswitch modello oled\b", "switch oled", text)
     candidates = []
     for key, product in products.items():
         if (kind == "lot" and product["category"] != "PC") or (kind != "lot" and product["category"] == "PC" and "pc" not in text.split()):
