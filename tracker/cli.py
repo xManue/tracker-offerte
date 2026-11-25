@@ -31,6 +31,8 @@ def parser():
     local = cmds.add_parser("run-local", help="Avvia il tracker e il worker dalla stessa configurazione")
     local.add_argument("--port", type=int, default=8000)
     local.add_argument("--env-file", type=Path)
+    restore = cmds.add_parser("restore-sqlite", help="Trasferisci un archivio SQLite in un PostgreSQL vuoto")
+    restore.add_argument("file", type=Path)
     cmds.add_parser("seed-demo")
     reset = cmds.add_parser("reset-demo")
     reset.add_argument("--yes", action="store_true", required=True)
@@ -159,6 +161,9 @@ def main():
                                                   min_profit=args.min_profit, signals=args.signals)}
             elif action == "import":
                 result = imported(session, args)
+            elif action == "restore-sqlite":
+                from .restore import restore_sqlite
+                result = restore_sqlite(session, args.file)
             elif action in {"dataset", "archive"}:
                 from .dataset import archive_events, export_parquet
                 if action == "dataset":

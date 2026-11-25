@@ -1,8 +1,10 @@
 import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import JSON, DateTime, Index, Integer, String, UniqueConstraint, create_engine
+from sqlalchemy import JSON, DateTime, Index, Integer, String, UniqueConstraint, create_engine, event
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
@@ -12,10 +14,19 @@ def now():
 
 def database_url():
     if value := os.getenv("TRACKER_DATABASE_URL"):
+        if value.startswith(("postgresql://", "postgres://")):
+            return "postgresql+psycopg://" + value.split("://", 1)[1]
         return value
     path = Path.cwd() / "data"
     path.mkdir(exist_ok=True)
     return f"sqlite:///{(path / 'tracker.db').as_posix()}"
+
+
+def database_schema():
+    name = os.getenv("TRACKER_DATABASE_SCHEMA") or None
+    if name and not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", name):
+        raise ValueError("Schema PostgreSQL non valido")
+    return name
 
 
 class Base(DeclarativeBase):
@@ -73,7 +84,23 @@ class Reservation(Base):
 
 
 def make_engine(url=None):
-    return create_engine(url or database_url(), pool_pre_ping=True)
+    url = make_url(url or database_url())
+    schema = database_schema()
+    if schema and url.get_backend_name() != "postgresql":
+        raise ValueError("Lo schema del tracker richiede PostgreSQL")
+    engine = create_engine(url, pool_pre_ping=True)
+    if schema:
+        @event.listens_for(engine, "connect")
+        def set_schema(connection, _):
+            # Persist the search path across transaction rollbacks on pooled connections.
+            autocommit = connection.autocommit
+            connection.autocommit = True
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_catalog.set_config('search_path', %s, false)", (schema,))
+            finally:
+                connection.autocommit = autocommit
+    return engine
 
 
 def make_sessions(url=None):

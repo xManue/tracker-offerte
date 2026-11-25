@@ -2,12 +2,20 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.schema import DropSchema
 
 from tracker.catalog import catalog
-from tracker.db import make_sessions
+from tracker.db import Base, Event, Job, Reservation, make_sessions
+from tracker.restore import restore_sqlite
 from tracker.runtime import bootstrap, run_local
+from tracker.store import enqueue, record, utc
 
 
 def test_run_local_loads_env_restarts_worker_and_preserves_existing_archive(tmp_path, monkeypatch):
@@ -75,3 +83,43 @@ def test_run_local_rejects_an_explicit_missing_env_file(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="File .env indicato non trovato"):
         run_local(8000, Path("data/missing.env"))
     assert not Path("data").exists()
+
+
+def test_restore_sqlite_preserves_ids_in_private_postgres_schema(tmp_path, monkeypatch):
+    postgres = os.getenv("TRACKER_TEST_POSTGRES_URL")
+    if not postgres:
+        pytest.skip("Richiede PostgreSQL di test")
+
+    path = tmp_path / "archivio con spazi.db"
+    source = create_engine(f"sqlite:///{path.as_posix()}")
+    Base.metadata.create_all(source)
+    with sessionmaker(source).begin() as session:
+        first = record(session, "real", "offer", "local", "one", {"title": "Offerta"})
+        job = enqueue(session, "real", "evaluate", "first", {"event_id": first})
+        session.execute(Reservation.__table__.insert(), {"id": 8, "mode": "real", "unit": "local:one", "plan": "p"})
+        observed = session.execute(Event.__table__.select()).mappings().one()
+    source.dispose()
+
+    schema = "tracker_restore_" + uuid4().hex
+    monkeypatch.setenv("TRACKER_DATABASE_URL", postgres)
+    monkeypatch.setenv("TRACKER_DATABASE_SCHEMA", schema)
+    admin = create_engine(postgres)
+    sessions = make_sessions()
+    try:
+        command.upgrade(Config("alembic.ini"), "head")
+        with sessions.begin() as session:
+            assert session.scalar(text("SELECT current_schema()")) == schema
+            assert restore_sqlite(session, path) == {"events": 1, "jobs": 1, "reservations": 1}
+            assert session.get(Job, job).data == {"event_id": first}
+            assert session.get(Reservation, 8).unit == "local:one"
+            assert session.get(Event, first).known_at == utc(observed["known_at"])
+        with pytest.raises(ValueError, match="database del tracker vuoto"), sessions.begin() as session:
+            restore_sqlite(session, path)
+        with sessions.begin() as session:
+            assert record(session, "real", "offer", "local", "two", {}) == first + 1
+            assert enqueue(session, "real", "evaluate", "second", {}) == job + 1
+    finally:
+        sessions.kw["bind"].dispose()
+        with admin.begin() as conn:
+            conn.execute(DropSchema(schema, if_exists=True, cascade=True))
+        admin.dispose()

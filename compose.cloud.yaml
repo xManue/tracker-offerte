@@ -1,0 +1,32 @@
+name: tracker-cloud
+
+x-tracker: &tracker
+  build: .
+  env_file: .env.cloud
+  environment:
+    TRACKER_DATABASE_URL: ${TRACKER_DATABASE_URL:?Imposta TRACKER_DATABASE_URL in .env.cloud}
+    TRACKER_DATABASE_SCHEMA: tracker
+  volumes:
+    - ./data:/app/data
+
+services:
+  migrate:
+    <<: *tracker
+    command: ["sh", "-c", "alembic upgrade head && tracker bootstrap"]
+  web:
+    <<: *tracker
+    command: ["uvicorn", "tracker.web:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  worker:
+    <<: *tracker
+    command: ["tracker", "worker", "--mode", "real"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  tools:
+    <<: *tracker
+    profiles: ["tools"]

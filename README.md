@@ -36,6 +36,31 @@ tracker worker --once --mode demo
 
 Da Compose esegui i comandi CLI con `docker compose run --rm tools`, per esempio `docker compose run --rm tools tracker reset-demo --yes`.
 
+### VM gratuita e database Supabase
+
+Usa un progetto Supabase Free dedicato. Il piano include 500 MB per il database e può mettere in pausa il progetto dopo una settimana di inattività. Su una VM Ubuntu, per esempio Oracle Cloud Always Free se c’è capacità, installa Docker con il plugin Compose 2.24 o successivo e clona il repository. [Piano Supabase Free](https://supabase.com/pricing) · [Oracle Always Free](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm)
+
+Copia `.env.cloud.example` in `.env.cloud` sulla VM e rendi il file leggibile solo dal tuo utente. In Supabase apri **Connect** e usa la stringa **Session pooler** sulla porta 5432 se la VM è IPv4. Con IPv6 puoi usare **Direct connection**. Imposta `TRACKER_DATABASE_URL` con la stringa del progetto e la password del database codificata nell’URL. Scarica il certificato del database da Supabase e salvalo in `data/supabase-ca.crt` sulla VM per la verifica TLS. L’app usa PostgreSQL nello schema `tracker`. Puoi disattivare la Data API del progetto, che l’app non usa. [Connessione PostgreSQL e TLS](https://supabase.com/docs/guides/database/connecting-to-postgres) · [Data API](https://supabase.com/docs/guides/api/securing-your-api)
+
+Per riprendere l’archivio, ferma il tracker locale e copia il suo `data/tracker.db` sulla VM come `data/tracker-restore.db`. Esegui i comandi seguenti prima del primo avvio. Il ripristino accetta solo tabelle del tracker vuote, conserva gli identificativi che legano storico e attività e apre il file SQLite in sola lettura.
+
+```sh
+docker compose --env-file .env.cloud -f compose.cloud.yaml run --rm --build migrate alembic upgrade head
+docker compose --env-file .env.cloud -f compose.cloud.yaml run --rm --build tools tracker restore-sqlite /app/data/tracker-restore.db
+```
+
+Avvia manualmente dashboard e worker quando vuoi eseguire il tracker. La porta web resta su loopback. Con un tunnel SSH, apri `http://127.0.0.1:8800/real/alerts` sul tuo computer.
+
+```sh
+# Sulla VM
+docker compose --env-file .env.cloud -f compose.cloud.yaml up -d --build
+
+# Dal tuo computer
+ssh -N -L 8800:127.0.0.1:8000 utente@vm
+```
+
+Per fermarlo, usa `docker compose --env-file .env.cloud -f compose.cloud.yaml down` sulla VM. L’archivio resta in Supabase. Configura in `.env.cloud` le fonti autorizzate che vuoi eseguire sul server. L’automazione Codex già configurata sul PC continua a usare la sua cartella locale.
+
 ## Percorso demo
 
 | Pagina | Caso da provare |
