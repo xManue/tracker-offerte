@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import source_options, status as badge %}
+{% block title %}Occasioni{% endblock %}
+{% block content %}
+<section class="hero">
+  <div><div class="eyebrow">Radar acquisti</div><h1>Occasioni</h1><p>Confronta il costo consegnato con il ricavo stimato per canale di rivendita.</p></div>
+  <a class="button secondary light" href="/{{ mode }}/sources">Gestisci sorgenti</a>
+</section>
+<div class="metrics">
+  <div><span>Inserzioni monitorate</span><strong>{{ monitored }}</strong></div>
+  <div><span>Risultati con i filtri attuali</span><strong>{{ cards|length }}</strong></div>
+  <a href="/{{ mode }}/review"><span>Inserzioni da rivedere</span><strong>{{ review }}</strong></a>
+  <a href="/{{ mode }}/alerts"><span>Avvisi registrati</span><strong>{{ alerts }}</strong></a>
+</div>
+<section class="panel">
+  <div class="panel-head"><div><h2>Inserzioni</h2><p>Prezzi, comparabili e qualità del dato</p></div><a href="/{{ mode }}/budget">Pianifica il budget</a></div>
+  <form class="filters" method="get">
+    <label class="grow">Cerca<input name="q" placeholder="Modello, marca o descrizione" value="{{ q }}"></label>
+    <label>Sorgente<select name="source"><option value="">Tutte</option>{{ source_options(channels, active_source) }}</select></label>
+    <label>Ordina per<select name="sort">{% for key,label in [('profit','Margine'),('fresh','Freschezza'),('liquidity','Liquidità')] %}<option value="{{ key }}"{% if sort == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <button type="submit">Filtra</button>
+    <details class="filter-more"{% if filters.get('profit') or filters.get('percent') or filters.get('maximum') or filters.get('evidence') or filters.get('condition') or filters.get('confidence') or filters.get('observed_since') or filters.get('favorite') or status != 'current' %} open{% endif %}>
+      <summary>Altri filtri</summary>
+      <div class="row">
+        <label>Margine min. €<input type="number" step="0.01" name="profit" value="{{ filters.get('profit', '') }}"></label>
+        <label>Margine min. %<input type="number" step="0.01" name="percent" value="{{ filters.get('percent', '') }}"></label>
+        <label>Costo max. €<input type="number" step="0.01" min="0" name="maximum" value="{{ filters.get('maximum', '') }}"></label>
+        <label>Comparabili min.<input type="number" min="0" name="evidence" value="{{ filters.get('evidence', '0') }}"></label>
+        <label>Condizione<select name="condition"><option value="">Tutte</option>{% for value in ['used', 'new', 'refurbished', 'broken', 'unknown'] %}<option value="{{ value }}"{% if filters.get('condition')==value %} selected{% endif %}>{{ value|label }}</option>{% endfor %}</select></label>
+        <label>Affidabilità<select name="confidence"><option value="">Tutte</option>{% for value in ['buona','bassa'] %}<option value="{{ value }}"{% if filters.get('confidence')==value %} selected{% endif %}>{{ value|capitalize }}</option>{% endfor %}</select></label>
+        <label>Osservata dal<input type="date" name="observed_since" value="{{ filters.get('observed_since', '') }}"></label>
+        <label>Disponibilità<select name="status">{% for key,label in [('current','Correnti'),('available','Disponibili'),('unknown','Da verificare'),('unavailable','Indisponibili'),('all','Tutte')] %}<option value="{{ key }}"{% if status == key %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label class="check"><input type="checkbox" name="favorite" value="true"{% if filters.get('favorite') %} checked{% endif %}> Solo preferiti</label>
+      </div>
+    </details>
+  </form>
+  {% if cards %}
+  <div class="table-wrap">
+    <table><thead><tr><th>Articolo</th><th>Sorgente</th><th>Consegnato</th><th>Rivendita stimata</th><th>Margine stimato</th><th>Stato</th></tr></thead>
+    <tbody>{% for card in cards %}
+      {% set item = card.offer %}
+      <tr>
+        <td><a class="item-link" href="/{{ mode }}/offers/{{ item.id }}">{{ item.data.title }}</a><small>{{ item.data.condition|label }} · {{ card.assessment.matching.type|label }}{% if card.decision.favorite %} · Preferito{% endif %}{% if card.decision.state %} · {{ {'watch':'Segui','consider':'Valuta','skip':'Scartata'}[card.decision.state] }}{% endif %}</small></td>
+        <td>{{ item.source|channel }}<small>{{ item.known_at|rome }}</small></td>
+        <td class="money">{{ card.assessment.purchase|euro }}</td>
+        <td>{% if card.best %}<span class="money">{{ card.best.comparables.median|euro }}</span><small>{{ card.best.channel|channel }} · {{ card.best.comparables.count }} confronti</small>{% else %}<span class="muted">Dati insufficienti</span>{% endif %}</td>
+        <td>{% if card.best and card.best.margin %}<strong class="{{ 'positive' if card.best.margin.profit|float >= 0 else 'negative' }}">{{ card.best.margin.profit|euro }}</strong><small>{{ card.best.margin.percent or '—' }}{% if card.best.margin.percent %}%{% endif %} · Confidenza {{ card.best.confidence }}</small>{% elif card.assessment.purchase is none %}<span class="muted">Costo incompleto</span>{% else %}<span class="muted">Da stimare</span>{% endif %}
+        {% if sort == 'liquidity' and card.probability is not none %}<small>{{ (card.probability|float * 100)|round|int }}% entro 30 gg</small>{% endif %}</td>
+        <td>{{ badge(item.data.status) }}</td>
+      </tr>
+    {% endfor %}</tbody></table>
+  </div>
+  {% else %}<div class="empty"><h3>Nessuna inserzione trovata</h3><p>Modifica i filtri oppure importa un file da Sorgenti.</p><a href="/{{ mode }}/sources">Apri Sorgenti</a></div>{% endif %}
+</section>
+{% endblock %}

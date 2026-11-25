@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import product_options %}
+{% block title %}Richieste{% endblock %}
+{% block content %}
+<div class="heading"><div><div class="eyebrow">Radar al contrario</div><h1>Richieste</h1><p>{{ matches|length }} richieste valide. Le compatibilità indicano interesse espresso.</p></div></div>
+<section class="panel padded"><h2>Nuova richiesta</h2>
+<form class="row" method="post">
+<label>Variante<select name="product_id" required><option value="">Seleziona</option>{{ product_options(products) }}</select></label>
+<label>Budget consegnato €<input name="budget" required></label>
+<label>Quantità<input type="number" name="quantity" min="1" value="1"></label>
+<label>Zona (facoltativa)<input name="area"></label>
+<label>Valida fino al<input type="date" name="expires" required min="{{ today }}"></label>
+<div class="checks"><label class="check"><input type="checkbox" name="conditions" value="used" checked> Usato</label><label class="check"><input type="checkbox" name="conditions" value="new"> Nuovo</label><label class="check"><input type="checkbox" name="conditions" value="refurbished"> Ricondizionato</label></div>
+<label class="check"><input type="checkbox" name="opt_in" value="true"> Avvisami per abbinamenti</label><button>Salva richiesta</button>
+</form></section>
+{% for item in matches %}{% set row = item.request.data %}
+<section class="panel padded"><h2>{{ products[row.product_id].name }}</h2><p>{{ row.budget|euro }} per unità · Quantità {{ row.quantity }} · Fino al {{ row.expires }}{% if row.area %} · {{ row.area }}{% endif %}</p>
+{% for card in item.offers %}<div class="mini-row"><span><a href="/{{ mode }}/offers/{{ card.offer.id }}">{{ card.offer.data.title }}</a><small>{{ card.offer.source|channel }} · {{ card.offer.data.condition|label }} · Quantità {{ card.offer.data.quantity or 'da verificare' }}</small></span><strong>{{ card.assessment.purchase|euro }}</strong></div>
+{% else %}<p class="muted">Nessuna offerta compatibile.</p>{% endfor %}
+</section>{% else %}<section class="panel empty"><h2>Nessuna richiesta attiva</h2><p>Aggiungi una variante e un budget per individuare offerte compatibili.</p></section>{% endfor %}
+{% endblock %}

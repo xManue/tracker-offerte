@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}Budget{% endblock %}
+{% block content %}
+<div class="heading"><div><div class="eyebrow">Piano acquisti</div><h1>Budget</h1><p>Stima il capitale da impegnare e confronta il piano con uno scenario prudente.</p></div></div>
+<section class="panel padded"><form method="get" class="row">
+  <label>Capitale €<input name="capital" value="{{ capital }}" required></label><label>Margine minimo €<input name="minimum" value="{{ minimum }}" required></label>
+  <label>Limite per categoria %<input name="concentration" type="number" min="1" max="100" value="{{ concentration }}"></label>
+  <label>Orizzonte in giorni<input name="horizon" type="number" min="1" max="365" value="{{ horizon }}"></label>
+  <label>Propensione al rischio<select name="risk"><option value="balanced">Bilanciata</option><option value="prudent"{% if risk == 'prudent' %} selected{% endif %}>Prudente</option></select></label>
+  <button>Calcola piano</button>
+</form></section>
+<div class="grid">
+{% for title, plan in [('Piano selezionato', standard), ('Scenario prudente', prudent)] %}
+  <section class="panel padded"><h2>{{ title }}</h2><p>Impegno {{ plan.spent|euro }} · Residuo {{ plan.left|euro }}</p><div class="key-number">{{ plan.profit|euro }} <small>margine se venduto</small></div>
+    {% for item in plan.chosen %}<div class="mini-row"><span><strong>{{ item.title }}</strong><small>{{ item.purchase|euro }} · {{ item.reason }}{% if item.probability is not none %} · {{ (item.probability|float*100)|round|int }}% entro 30 gg{% endif %}</small></span><strong class="positive">{{ item.profit|euro }}</strong></div>
+    {% else %}<p class="muted">Nessun acquisto con questi vincoli.</p>{% endfor %}
+    <details open><summary>Esclusioni ({{ plan.excluded|length }})</summary>{% for item in plan.excluded %}<div class="mini-row"><span>{{ item.title }}</span><small>{{ item.reason }}</small></div>{% endfor %}</details>
+  </section>
+{% endfor %}
+</div>
+{% endblock %}

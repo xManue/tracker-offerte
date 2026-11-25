@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import costs, product_options, status, chart %}
+{% block title %}{{ offer.data.title }}{% endblock %}
+{% block content %}
+<div class="breadcrumb"><a href="/{{ mode }}">Occasioni</a><span>/</span><span>{{ offer.source|channel }}</span></div>
+<div class="heading"><div><div class="eyebrow">{{ offer.data.condition|label }} · {{ evaluation.matching.type|label }}</div><h1>{{ offer.data.title }}</h1><p>Ultima osservazione {{ offer.known_at|rome }}. Prossima verifica {{ next_check|rome if next_check else 'non programmata' }}.</p></div>{{ status(offer.data.status) }}</div>
+<div class="grid">
+<section class="panel padded">
+  <h2>Prezzo e storico</h2>
+  {% if offer.data.image_url %}<img class="evidence-image" src="{{ offer.data.image_url }}" alt="Foto dell’annuncio" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+  <div class="key-number">{{ evaluation.purchase|euro }} <small>consegna inclusa</small></div>
+  <p>Prezzo esposto {{ offer.data.price if offer.data.price is not none else 'mancante' }} {{ offer.data.currency }} · Spedizione {{ offer.data.shipping if offer.data.shipping is not none else 'sconosciuta' }}{% if offer.data.shipping is not none %} {{ offer.data.currency }}{% endif %}</p>
+  {% if offer.data.fx_rate %}<p>Cambio {{ offer.data.fx_rate }} EUR · {{ offer.data.fx_date }} · {{ offer.data.fx_source }}</p>{% endif %}
+  {% if offer.data.description %}<p>{{ offer.data.description }}</p>{% endif %}
+  {% if offer.data.url %}<a href="{{ offer.data.url }}" target="_blank" rel="noopener noreferrer">Apri inserzione originale</a>{% endif %}
+  {{ chart('price-history', history|map(attribute='data.price')|list, history|map(attribute='data.currency')|list, 'Grafico dello storico dei prezzi esposti') }}
+  <div class="table-wrap"><table><thead><tr><th>Osservato</th><th>Prezzo</th><th>Disponibilità</th></tr></thead><tbody>
+  {% for snapshot in history|reverse %}<tr><td>{{ snapshot.known_at|rome }}</td><td>{{ snapshot.data.price or '—' }} {{ snapshot.data.currency }}</td><td>{{ status(snapshot.data.status) }}</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+<section class="panel padded">
+  <h2>Identificazione</h2>
+  {% set picked = evaluation.matching.product_id %}
+  <p>{{ products[picked].name if picked else 'Variante da confermare' }}{% if evaluation.matching.manual %} · Verifica manuale{% endif %}</p>
+  {% for candidate in evaluation.matching.candidates[:5] %}<div class="candidate"><b>{{ products[candidate.id].name }}</b><small>{{ candidate.score }}/100 · {{ candidate.reasons|join(', ') or 'Nessuna prova concordante' }}{% if candidate.conflicts %} · {{ candidate.conflicts|join(', ') }}{% endif %}</small></div>{% endfor %}
+  <form class="stack" method="post" action="/{{ mode }}/offers/{{ offer.id }}/match"><label>Correggi variante<select name="product_id"><option value="">Da confermare</option>{{ product_options(products, picked) }}</select></label><button>Salva abbinamento</button></form>
+  <form class="stack" method="post" enctype="multipart/form-data" action="/{{ mode }}/offers/{{ offer.id }}/ocr"><label>Analizza immagine locale<input required type="file" name="file" accept="image/*"></label><button class="secondary">Estrai testo</button></form>
+  {% for image in images %}<blockquote>{{ image.data.text or 'Testo non rilevato' }}<small>{{ image.data.boxes|length }} riquadri OCR · {{ image.known_at|rome }}</small></blockquote>{% endfor %}
+</section>
+</div>
+<section class="panel padded">
+  <h2>Rivendita per canale</h2>
+  {% if evaluation.estimates %}<p>Ordine per margine stimato. Intervallo tra primo e terzo quartile dei confronti.</p>{% endif %}
+  <div class="grid">{% for estimate in evaluation.estimates %}
+    <article class="inset"><h3>{{ estimate.channel|channel }}</h3>
+    <p>{{ estimate.comparables.low|euro }} – {{ estimate.comparables.high|euro }} · Confidenza {{ estimate.confidence }}</p>
+    {{ costs(estimate.margin) }}
+    <details><summary>{{ estimate.comparables.count }} comparabili su {{ estimate.comparables.span_days }} giorni</summary>
+      {% if estimate.comparables.expanded %}<p>Inclusi modelli con lo stesso chip e memoria. {{ estimate.comparables.exact_count }} confronti esatti.</p>{% endif %}
+      <table><thead><tr><th>Vendita</th><th>Formato</th><th>Pagato per unità</th></tr></thead><tbody>
+        {% for sale in estimate.comparables.evidence %}<tr><td>{{ sale.date|rome }}</td><td>{{ sale.sale_format or '—' }}</td><td>{{ sale.unit_eur|euro }}</td></tr>{% endfor %}
+      </tbody></table>
+    </details>
+    <details><summary>Scenari di prezzo</summary><table><thead><tr><th>Prezzo</th><th>Ricavo netto</th><th>Entro 30 giorni</th></tr></thead><tbody>
+      {% for scenario in scenarios[estimate.channel] %}<tr><td>{{ scenario.ask|euro }}</td><td>{{ scenario.margin.net|euro if scenario.margin else '—' }}</td><td>{% if scenario.liquidity.probability is not none %}{{ (scenario.liquidity.probability|float * 100)|round|int }}% ({{ scenario.liquidity.hits }}/{{ scenario.liquidity.trials }}){% else %}Dati insufficienti ({{ scenario.liquidity.trials }}){% endif %}</td></tr>{% endfor %}
+    </tbody></table></details>
+    </article>
+  {% else %}<p class="muted">Servono una variante riconosciuta e vendite comparabili con prezzo pagato.</p>{% endfor %}</div>
+</section>
+<div class="grid">
+<section class="panel padded"><h2>Duplicati</h2>
+  {% for member in group %}<p>Unità confermata · <a href="/{{ mode }}/offers/{{ member.id }}">{{ member.source|channel }} · {{ member.data.title }}</a></p>{% endfor %}
+  {% for candidate in candidates %}
+  <form class="row" method="post" action="/{{ mode }}/offers/{{ offer.id }}/duplicate">
+    <input type="hidden" name="other" value="{{ candidate.offer.id }}"><div class="grow"><a href="/{{ mode }}/offers/{{ candidate.offer.id }}">{{ candidate.offer.source|channel }} · {{ candidate.offer.data.title }}</a><small>Foto simile (distanza {{ candidate.distance }}){% if candidate.same_title %} · Titolo uguale{% endif %}{% if candidate.same_area %} · Stessa area{% endif %}</small></div><button class="secondary">Conferma stessa unità</button>
+  </form>
+  {% else %}{% if not group %}<p class="muted">Nessuna ripubblicazione individuata.</p>{% endif %}{% endfor %}
+</section>
+<section class="panel padded"><h2>Decisione</h2>
+  <form class="stack" method="post" action="/{{ mode }}/offers/{{ offer.id }}/decision">
+  <label>Stato<select name="state">{% for value,label in [('watch','Segui'),('consider','Valuta acquisto'),('skip','Scarta')] %}<option value="{{ value }}"{% if decision and decision.data.state == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <label>Nota<input name="note" maxlength="500" value="{{ decision.data.note if decision else '' }}"></label>
+  <label class="check"><input type="checkbox" name="favorite" value="true"{% if decision and decision.data.favorite %} checked{% endif %}> Preferito</label>
+  <button>Salva decisione</button></form>
+</section>
+</div>
+{% endblock %}

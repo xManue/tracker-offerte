@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import source_options, status %}
+{% block title %}Sorgenti{% endblock %}
+{% block content %}
+<div class="heading"><div><div class="eyebrow">Raccolta e qualità</div><h1>Sorgenti</h1><p>Cerca sui marketplace, importa dati e controlla lo stato delle raccolte.</p></div></div>
+<section class="panel padded">
+  <h2>Ricerca multicanale</h2>
+  <form class="row" method="get"><label class="grow">Parola chiave<input name="q" value="{{ query }}" required maxlength="120"></label><button>Cerca canali</button></form>
+  <div class="channel-grid">
+    {% for key, item in channels.items() if item.search %}
+    <article class="inset"><h3>{{ item.name }}</h3><p>{{ item.method }} · {% if configured[key] and policies.get(key, {}).get('history') and mode == 'real' %}Raccolta configurata{% elif configured[key] and mode == 'real' %}Conservazione da abilitare{% else %}Ricerca manuale{% endif %}</p>
+      <div class="links"><a target="_blank" rel="noopener noreferrer" href="{{ item.search_url(query) }}">Cerca offerte</a><a target="_blank" rel="noopener noreferrer" href="{{ item.seller }}">Area vendita</a></div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+<div class="grid">
+<section class="panel padded">
+  <h2>Importa file</h2>
+  <p>Offerte e ordini da CSV o JSON. Stock anche da XLSX o PDF.</p>
+  <form class="stack" action="/{{ mode }}/imports" method="post" enctype="multipart/form-data">
+    <div class="row"><label>Fonte<select name="source">{{ source_options(channels, 'local') }}</select></label><label>Dati<select name="kind"><option value="offer">Offerte</option><option value="sale">Vendite e ordini</option><option value="stock">Stock</option></select></label></div>
+    <label>File<input type="file" required name="file" accept=".csv,.tsv,.json,.xlsx,.pdf"></label>
+    <label>Mappatura colonne (facoltativa)<textarea name="columns" rows="2" placeholder='{"external_id":"ID riga","paid_price":"Totale pagato"}'></textarea></label>
+    <label class="check"><input type="checkbox" name="historical" value="true"> Le date di prima osservazione nel file sono documentate</label>
+    <button>Controlla anteprima</button>
+  </form>
+  <a href="/static/esempio-offerte.csv" download>Scarica CSV offerte di esempio</a>
+  <a class="spaced" href="/static/esempio-vendite.csv" download>Scarica CSV vendite di esempio</a>
+</section>
+<section class="panel padded">
+  <h2>Monitoraggio automatico</h2>
+  <form class="stack" method="post" action="/{{ mode }}/sources/watch">
+    <label>Ricerca da monitorare<input name="query" required maxlength="120" value="{{ query }}"></label>
+    <div class="row"><label>Fonte<select name="source">{{ source_options(channels) }}</select></label><label>Ogni (minuti)<input name="minutes" type="number" min="15" max="10080" value="60"></label></div>
+    <button>Salva monitoraggio</button>
+  </form>
+  {% for watch in watches %}<p>{{ watch.data.query }} · {{ watch.source|channel }} · {{ watch.data.minutes }} min</p>{% endfor %}
+  <details><summary>Permessi dati per fonte</summary>
+  <p>Abilita la conservazione e l’uso per il dataset solo se i dati lo consentono.</p>
+  <form class="stack" method="post" action="/{{ mode }}/sources/policy">
+    <label>Fonte<select name="source">{{ source_options(channels) }}</select></label>
+    <label class="check"><input type="checkbox" name="history" value="true"> Storico consentito</label>
+    <label class="check"><input type="checkbox" name="training" value="true"> Esportazione per addestramento consentita</label>
+    <button class="secondary">Salva permessi</button>
+  </form>
+  {% for key, value in policies.items() %}<small>{{ key|channel }} · Storico {{ 'sì' if value.history else 'no' }} · Addestramento {{ 'sì' if value.training else 'no' }}</small>{% endfor %}
+  </details>
+</section>
+</div>
+<section class="panel padded">
+  <h2>Cambiamenti di mercato</h2><p>Confronto su due finestre consecutive. Le vendite richiedono un esito verificato.</p>
+  <div class="table-wrap"><table><thead><tr><th>Fonte</th><th>Vendute</th><th>Nuove</th><th>Stock osservato</th><th>Variazioni prezzo</th><th>Segnale</th></tr></thead><tbody>
+    {% for signal in market %}<tr><td>{{ signal.source|channel }}</td>{% for key in ['sold','new','stock','price'] %}<td>{{ signal.before[key] }} → {{ signal.after[key] }}</td>{% endfor %}<td>{{ signal.status }}</td></tr>{% else %}<tr><td colspan="6">Nessuna finestra osservata.</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+<div class="grid">
+<section class="panel padded"><h2>Ultime raccolte e import</h2>
+  {% for item in collections|reverse %}<p>{{ item.source|channel }} · {{ item.data.query }} · {{ item.data.received }} righe <small>{{ item.known_at|rome }} · {{ 'Parziale' if item.data.status == 'partial' else 'Riuscita' }}</small></p>{% endfor %}
+  {% for item in batches|reverse %}<p>{{ item.source|channel }} · {{ item.data.rows }} righe · {{ item.data.rejected }} scarti<small>{{ item.known_at|rome }}</small></p>{% endfor %}
+  {% for item in errors|reverse %}<p class="negative">{{ item.source|channel }} · {{ item.data.message }}<small>{{ item.known_at|rome }}</small></p>{% endfor %}
+  {% if not collections and not batches %}<p class="muted">Nessuna raccolta avviata.</p>{% endif %}
+</section>
+<section class="panel padded"><h2>Coda worker</h2>
+  {% for job in jobs %}<div class="mini-row"><span>{{ {'evaluate':'Valutazione','comparables':'Vendita comparabile','refresh':'Ricontrollo','discover':'Scoperta','telegram':'Telegram'}.get(job.kind, job.kind) }}<small>{{ job.run_at|rome }}{% if job.error %} · {{ job.error }}{% endif %}</small></span>{{ status(job.status) }}</div>
+  {% else %}<p class="muted">Nessun job in coda.</p>{% endfor %}
+</section>
+</div>
+{% if sale_evidence %}<section class="panel padded"><h2>Vendite con importo finale sconosciuto</h2><p>Entrano nel conteggio delle vendite verificate. Il prezzo esposto resta fuori dai comparabili pagati.</p>
+{% for item in sale_evidence %}<div class="mini-row"><span>{{ item.data.title }}<small>{{ item.source|channel }} · {{ item.effective_at|rome }}</small></span><span>{{ item.data.shown_price or '—' }} {{ item.data.currency }}</span></div>{% endfor %}
+</section>{% endif %}
+{% endblock %}

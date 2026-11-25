@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block title %}Revisione{% endblock %}
+{% block content %}
+<div class="heading"><div><div class="eyebrow">Qualità del dato</div><h1>Revisione</h1><p>Varianti incerte, ripubblicazioni e righe scartate.</p></div><a class="button secondary" href="/{{ mode }}/lots">Rivedi lotti e stock</a></div>
+<section class="panel"><div class="panel-head"><h2>Inserzioni da controllare</h2></div><div class="table-wrap"><table><thead><tr><th>Inserzione</th><th>Sorgente</th><th>Motivo</th></tr></thead><tbody>
+{% for card in cards %}<tr><td><a href="/{{ mode }}/offers/{{ card.offer.id }}">{{ card.offer.data.title }}</a></td><td>{{ card.offer.source|channel }}</td><td>{{ 'Ripubblicazione possibile' if card.product else card.assessment.matching.type|label ~ ' · variante da verificare' }}</td></tr>{% else %}<tr><td colspan="3">Coda di revisione vuota.</td></tr>{% endfor %}
+</tbody></table></div></section>
+<section class="panel"><div class="panel-head"><h2>Scarti recenti</h2></div><div class="table-wrap"><table><thead><tr><th>Fonte</th><th>Riga</th><th>Motivo</th></tr></thead><tbody>
+{% for item in errors %}<tr><td>{{ item.source|channel }}</td><td>{{ item.data.row }}</td><td>{{ item.data.message }}</td></tr>{% else %}<tr><td colspan="3">Nessuno scarto registrato.</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% macro source_options(channels, chosen='', only_sales=false) %}
+{% for key, channel in channels.items() if not only_sales or channel.seller %}<option value="{{ key }}"{% if key == chosen %} selected{% endif %}>{{ channel.name }}</option>{% endfor %}
+{% endmacro %}
+{% macro product_options(products, chosen='') %}
+{% for key, product in products.items() %}<option value="{{ key }}"{% if key == chosen %} selected{% endif %}>{{ product.name }}</option>{% endfor %}
+{% endmacro %}
+{% macro costs(money) %}
+{% if money %}
+<dl class="costs">
+  <div><dt>Prezzo di rivendita</dt><dd>{{ money.gross | euro }}</dd></div>
+  <div><dt>Acquisto consegnato</dt><dd>{{ money.purchase | euro }}</dd></div>
+  <div><dt>Commissioni</dt><dd>{{ money.fee | euro }}</dd></div>
+  <div><dt>Spedizione in vendita</dt><dd>{{ money.shipping | euro }}</dd></div>
+  <div><dt>Extra</dt><dd>{{ money.extra | euro }}</dd></div>
+  <div><dt>Ricavo netto</dt><dd>{{ money.net | euro }}</dd></div>
+  <div class="total"><dt>Margine stimato</dt><dd class="{{ 'positive' if money.profit|float >= 0 else 'negative' }}">{{ money.profit | euro }}{% if money.percent is not none %} · {{ money.percent }}%{% endif %}</dd></div>
+</dl>
+{% else %}<p class="muted">Margine da verificare. Servono il costo consegnato e i costi del canale di vendita.</p>{% endif %}
+{% endmacro %}
+{% macro status(value) %}<span class="pill {{ 'good' if value in ['available', 'verified', 'sold', 'done', 'confirmed'] else 'warn' if value in ['unknown', 'uncertain', 'retry', 'failed'] else '' }}">{{ value | label }}</span>{% endmacro %}
+{% macro chart(id, values, dates, label) %}
+<canvas data-values='{{ values|tojson }}' data-dates='{{ dates|tojson }}' id="{{ id }}" aria-label="{{ label }}" role="img"></canvas>
+{% endmacro %}

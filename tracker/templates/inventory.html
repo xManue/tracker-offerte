@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import product_options, source_options, status %}
+{% block title %}Inventario{% endblock %}
+{% block content %}
+<div class="heading"><div><div class="eyebrow">Rivendita multicanale</div><h1>Inventario</h1><p>Registra i costi effettivi, prepara le bozze e aggiorna gli esiti di vendita.</p></div></div>
+<section class="panel padded"><h2>Registra acquisto</h2>
+<form class="row" method="post">
+  <label>Da offerta<select name="offer_id"><option value="">Inserimento manuale</option>{% for card in offers %}<option value="{{ card.offer.id }}">{{ card.offer.data.title }} · {{ card.offer.source|channel }}</option>{% endfor %}</select></label>
+  <label>Titolo<input name="title"></label><label>Variante<select name="product_id"><option value="">Da determinare</option>{{ product_options(products) }}</select></label>
+  <label>Costo effettivo €<input name="cost" required></label><label class="grow">Specifiche confermate<input name="specs"></label><button>Registra</button>
+</form></section>
+{% for item in items %}{% set row = item.data %}
+<section class="panel padded">
+  <div class="heading compact"><div><h2>{{ row.title }}</h2><p>Costo {{ row.purchase|euro }}{% if row.channel %} · {{ row.channel|channel }}{% endif %}{% if row.ask %} · Prezzo {{ row.ask|euro }}{% endif %}{% if row.realized_profit %} · Margine realizzato {{ row.realized_profit|euro }}{% endif %}</p></div>{{ status(row.state) }}</div>
+  {% if suggestions.get(item.id) %}<p>Prezzo da valutare {{ suggestions[item.id].median|euro }} · {{ suggestions[item.id].count }} comparabili</p>{% endif %}
+  {% set states = {'purchased':['verified','returned'],'verified':['listed','returned'],'listed':['repriced','sold','returned'],'repriced':['repriced','sold','returned','listed'],'sold':['returned'],'returned':['verified']} %}
+  <details><summary>Registra esito o nuovo prezzo</summary><form class="row" method="post" action="/{{ mode }}/inventory/{{ item.id }}">
+    <label>Stato<select name="state">{% for key in states[row.state] %}<option value="{{ key }}">{{ key|label }}</option>{% endfor %}</select></label>
+    <label>Canale<select name="channel">{{ source_options(channels, row.channel or 'ebay', true) }}</select></label><label>Prezzo €<input name="price"></label>
+    <label>Commissioni €<input name="fees"></label><label>Spedizione €<input name="outbound"></label><label>Extra €<input name="extras"></label><label>Nota<input name="note"></label><button>Registra esito</button>
+    <small>Per una vendita inserisci il prezzo pagato e tutti i costi, anche se pari a zero.</small>
+  </form></details>
+  {% if row.state not in ['sold','returned'] %}
+  <details><summary>Prepara bozza</summary><form class="row" method="post" action="/{{ mode }}/inventory/{{ item.id }}/draft">
+    <label>Canale<select name="channel">{{ source_options(channels, row.channel or 'ebay', true) }}</select></label>
+    <label>Prezzo €<input name="price" value="{{ suggestions[item.id].median if suggestions.get(item.id) else row.ask or '' }}" required></label><button class="secondary">Crea bozza</button>
+  </form></details>{% endif %}
+</section>
+{% else %}<section class="panel empty"><h2>Inventario vuoto</h2><p>Registra un acquisto per creare una bozza di vendita.</p></section>{% endfor %}
+<section class="panel padded"><h2>Bozze di pubblicazione</h2>
+{% for item in drafts %}{% set row = item.data %}
+<article class="inset"><h3>{{ row.title }}</h3><p>{{ row.channel|channel }} · {{ row.price|euro }}</p>
+<form class="stack" method="post" action="/{{ mode }}/drafts/{{ item.id }}">
+  <div class="row"><label class="grow">Titolo<input name="title" value="{{ row.title }}" required></label>
+  <label>Canale<select name="channel">{{ source_options(channels, row.channel, true) }}</select></label>
+  <label>Prezzo €<input name="price" value="{{ row.price }}" required></label></div>
+  <label>Descrizione<textarea name="description" rows="3">{{ row.description }}</textarea></label><button class="secondary">Salva bozza</button>
+</form>
+<div class="links"><a href="/{{ mode }}/drafts/{{ item.id }}.txt" download>Esporta bozza</a>{% if row.publisher %}<a href="{{ row.publisher }}" target="_blank" rel="noopener noreferrer">Apri area vendita</a>{% endif %}</div>
+</article>
+{% else %}<p class="muted">Nessuna bozza disponibile.</p>{% endfor %}
+</section>
+{% endblock %}

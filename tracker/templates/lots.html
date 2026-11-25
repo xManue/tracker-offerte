@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import source_options, product_options, status %}
+{% block title %}Lotti e stock{% endblock %}
+{% block content %}
+<div class="heading"><div><div class="eyebrow">Analisi componenti</div><h1>Lotti e stock</h1><p>Stima il ricavo a pezzi, il prezzo massimo da offrire e il costo di assemblaggio.</p></div><a class="button secondary" href="/{{ mode }}/sources">Importa stock</a></div>
+<section class="panel padded">
+  <form class="row" method="get">
+    <label>Canale<select name="channel">{{ source_options(channels, channel, true) }}</select></label>
+    <label>Orizzonte (giorni)<input type="number" min="1" max="365" name="horizon" value="{{ horizon }}"></label>
+    <label>Margine obiettivo €<input name="target" value="{{ target }}"></label>
+    <label>Test e gestione €<input name="costs" value="{{ costs }}"></label>
+    {% if batches %}<label>Lotto importato<select name="stock_batch">{% for key in batches %}<option value="{{ key }}"{% if key == active_batch %} selected{% endif %}>{{ key }}</option>{% endfor %}</select></label>{% endif %}
+    <button>Ricalcola</button>
+  </form>
+</section>
+{% for entry in forecasts %}
+<section class="panel padded">
+  <div class="heading compact"><div><h2>{{ entry.event.data.title }}</h2><p>Acquisto consegnato {{ entry.purchase|euro }} · {{ channel|channel }}</p></div>{% if entry.original %}<a href="/{{ mode }}/offers/{{ entry.original.id }}">Apri annuncio</a>{% endif %}</div>
+  <div class="metrics three">
+    <div><span>Margine intero</span><strong>{{ entry.whole.profit|euro if entry.whole else '—' }}</strong></div>
+    <div><span>Margine a pezzi se venduti tutti</span><strong>{{ entry.parts_profit_all|euro }}</strong></div>
+    <div><span>Prezzo massimo misurabile in {{ horizon }} gg</span><strong>{{ entry.parts.max_offer|euro }}</strong></div>
+  </div>
+  <small>Scenario venduti tutti · Offerta massima {{ entry.parts.max_if_all_sell|euro }}. Netto dei pezzi con tempi non misurabili {{ entry.parts.uncertain_net|euro }}.</small>
+  <div class="table-wrap"><table><thead><tr><th>Componente</th><th>Qtà</th><th>Stima unitaria</th><th>Netto totale</th><th>Invenduto stimato</th><th>Evidenza</th></tr></thead><tbody>
+  {% for line in entry.parts.lines %}<tr><td>{{ line.name }}<small>{{ line.identification|label }}</small></td><td>{{ line.quantity or '—' }}</td><td>{{ line.unit|euro }}</td><td>{{ line.net|euro }}</td><td>{{ line.unsold if line.unsold is not none else 'Dati insufficienti' }}</td><td>{{ line.evidence }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if entry.original %}<details><summary>Modifica componenti confermati</summary>{% for line in entry.parts.lines %}
+  <form class="row" method="post" action="/{{ mode }}/lots/component">
+    <input type="hidden" name="offer_id" value="{{ entry.original.id }}"><input type="hidden" name="position" value="{{ loop.index0 }}">
+    <label>Variante<select name="product_id"><option value="">Da verificare</option>{{ product_options(products, line.product_id) }}</select></label>
+    <label>Quantità<input name="quantity" type="number" min="1" value="{{ line.quantity }}"></label><label>Evidenza<input name="evidence" value="{{ line.evidence }}"></label>
+    <button class="secondary">Salva</button><button class="secondary" name="remove" value="true">Rimuovi dal lotto</button>
+  </form>{% endfor %}</details>{% endif %}
+</section>
+{% endfor %}
+{% if lots_candidates %}<section class="panel padded"><h2>Aggiungi componente a un lotto</h2>
+<form class="row" method="post" action="/{{ mode }}/lots/component">
+  <label>Annuncio<select name="offer_id">{% for row in lots_candidates %}<option value="{{ row.id }}">{{ row.data.title }}</option>{% endfor %}</select></label>
+  <label>Prodotto intero<select name="whole_product_id"><option value="">Da verificare</option>{{ product_options(products) }}</select></label>
+  <label>Componente<select name="product_id"><option value="">Da verificare</option>{{ product_options(products) }}</select></label>
+  <label>Quantità<input type="number" min="1" name="quantity" value="1"></label>
+  <label>Evidenza<input name="evidence" maxlength="500"></label><button>Aggiungi</button>
+</form></section>{% endif %}
+<section class="panel padded"><h2>Stock importato</h2>
+{% if stock %}
+<div class="metrics three"><div><span>Netto se venduto tutto</span><strong>{{ stock.all_net|euro }}</strong></div><div><span>Netto misurabile nell’orizzonte</span><strong>{{ stock.documented_net|euro }}</strong></div><div><span>Prezzo massimo misurabile</span><strong>{{ stock.max_offer|euro }}</strong></div></div>
+<small>Offerta massima se si vende tutto {{ stock.max_if_all_sell|euro }}. Le quantità senza tempi misurabili entrano solo nello scenario venduti tutti.</small>
+{% for line in stock.lines %}
+  <div class="mini-row"><div><strong>{{ line.name }}</strong><small>{{ line.origin_ref or 'Riga ' ~ line.line }} · {{ line.quantity if line.quantity is not none else 'Quantità ignota' }} · {{ line.condition|label }} · {{ line.count }} comparabili</small></div><div>{{ line.net|euro }}<small>{{ ('Invenduto stimato ' ~ line.unsold) if line.unsold is not none else 'Liquidità da verificare' }}</small></div></div>
+  <details><summary>Rivedi riga</summary><form class="row" method="post" action="/{{ mode }}/stock/{{ line.id }}/review">
+    <label>Variante<select name="product_id"><option value="">Da verificare</option>{{ product_options(products, line.product_id) }}</select></label>
+    <label>Quantità<input name="quantity" type="number" min="1" value="{{ line.quantity if line.quantity is not none else '' }}"></label>
+    <label>Condizione<select name="condition">{% for key in ['used','new','refurbished','broken','unknown'] %}<option value="{{ key }}"{% if key == line.condition %} selected{% endif %}>{{ key|label }}</option>{% endfor %}</select></label>
+    <button class="secondary">Salva riga</button>
+  </form></details>
+{% endfor %}
+{% else %}<p class="muted">Nessuno stock importato.</p>{% endif %}
+</section>
+<section class="panel padded"><h2>Componi un PC</h2><p>Seleziona una CPU, una GPU e i kit compatibili da offerte o inventario.</p>
+{% if offers or inventory %}
+<form class="stack" action="/{{ mode }}/builds" method="post">
+  <div class="checks">
+    {% for card in offers if card.product.category != 'PC' %}<label class="check"><input type="checkbox" name="choices" value="offer:{{ card.offer.id }}"> {{ card.product.name }} · {{ card.offer.source|channel }} · {{ card.assessment.purchase|euro }}</label>{% endfor %}
+    {% for item in inventory %}<label class="check"><input type="checkbox" name="choices" value="inventory:{{ item.id }}"> {{ item.data.title }} · Inventario · {{ item.data.purchase|euro }}</label>{% endfor %}
+  </div>
+  <div class="row"><label>Nome piano<input name="title" value="Piano PC"></label><label>Assemblaggio €<input name="labor" value="15"></label><label class="check"><input type="checkbox" name="reserve" value="true"> Riserva componenti</label><button>Salva piano</button></div>
+</form>
+{% endif %}
+{% for item in builds %}
+<article class="inset"><h3>{{ item.data.title }}</h3><p>{{ item.data.names|join(' · ') }}</p>
+<p>Costo contabilizzato {{ item.data.known_cost|euro }}{% if item.data.missing %} · Da quotare {{ item.data.missing|join(', ') }}{% endif %}{% if item.data.margin %} · Margine stimato {{ item.data.margin.profit|euro }}{% endif %}</p>
+<div class="links">{% for check in item.data.checks %}<span class="pill {{ 'good' if check.status == 'compatibile' else 'warn' }}">{{ check.label }} · {{ check.status }}</span>{% endfor %}</div>
+{% if item.data.reserved %}<form class="row" method="post" action="/{{ mode }}/builds/{{ item.id }}/release"><button class="secondary">Libera componenti</button></form>{% endif %}
+</article>
+{% endfor %}
+</section>
+{% endblock %}

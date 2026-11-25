@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Radar{% endblock %} · Tracker Offerte</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script defer src="/static/app.js"></script>
+</head>
+<body>
+  <aside class="rail">
+    <a class="brand" href="/{{ mode }}"><span class="mark" aria-hidden="true">T</span><span>Tracker<span class="brand-sub">Offerte</span></span></a>
+    <nav aria-label="Navigazione">
+      {% set links = [('dashboard','','Occasioni'),('review','/review','Revisione'),('alerts','/alerts','Avvisi'),('lots','/lots','Lotti e stock'),('requests','/requests','Richieste'),('budget','/budget','Budget'),('inventory','/inventory','Inventario'),('simulation','/simulation','Simulazione'),('sources','/sources','Sorgenti')] %}
+      {% for key, path, text in links %}
+      <a href="/{{ mode }}{{ path }}"{% if page == key or (key == 'dashboard' and page == 'details') %} aria-current="page"{% endif %}>{{ text }}</a>
+      {% endfor %}
+    </nav>
+    <div class="rail-bottom">
+      <span class="mode"><i></i>{{ 'Modalità demo' if mode == 'demo' else 'Dati reali' }}</span>
+      <a href="/{{ 'real' if mode == 'demo' else 'demo' }}">{{ 'Passa ai dati reali' if mode == 'demo' else 'Apri la demo' }}</a>
+    </div>
+  </aside>
+  <main class="shell">
+    <header class="top"><span>Tracker Offerte</span><span class="top-mode">{{ 'Demo · Dati sintetici' if mode == 'demo' else 'Archivio reale' }} <span class="separator">/</span> EUR · Italia</span></header>
+    <div class="workspace">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import status %}
+{% block title %}Anteprima import{% endblock %}
+{% block content %}
+<div class="heading"><div><div class="eyebrow">{{ source|channel }}</div><h1>Anteprima import</h1><p>{{ count }} righe valide · {{ errors|length }} scarti</p></div><a href="/{{ mode }}/sources">Torna alle sorgenti</a></div>
+<section class="panel padded">
+<h2>Righe valide</h2>
+{% if valid %}<div class="table-wrap"><table><thead><tr><th>Riga</th><th>ID</th><th>Articolo</th><th>Valore</th><th>Quantità</th><th>Condizione</th></tr></thead><tbody>
+{% for number, values in valid %}{% set row = values[0] %}<tr><td>{{ row.origin_ref or number }}</td><td>{{ row.external_id }}</td><td>{{ row.title }}</td><td>{{ row.paid_price or row.shown_price or row.price or '—' }} {{ row.currency }}</td><td>{{ row.quantity if row.quantity is not none else '—' }}</td><td>{{ status(row.condition) }}</td></tr>{% endfor %}
+</tbody></table></div>{% if count > valid|length %}<small>Prime {{ valid|length }} righe mostrate.</small>{% endif %}{% else %}<p>Nessuna riga importabile.</p>{% endif %}
+<form class="row" method="post" action="/{{ mode }}/imports/{{ token }}"><button>Conferma e registra import</button>{% if errors %}<a href="/{{ mode }}/imports/{{ token }}/errors">Scarica scarti CSV</a>{% endif %}</form>
+</section>
+{% if errors %}<section class="panel padded"><h2>Scarti</h2><ul>{% for row in errors[:25] %}<li>Riga {{ row.row }} · {{ row.message }}</li>{% endfor %}</ul></section>{% endif %}
+{% endblock %}

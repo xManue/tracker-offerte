@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import chart %}
+{% block title %}Simulazione{% endblock %}
+{% block content %}
+<div class="heading"><div><div class="eyebrow">Denaro virtuale</div><h1>Simulazione</h1><p>Confronta margine puro e margine con liquidità sugli stessi eventi osservati.</p></div>{% if live %}<a class="button secondary" href="/{{ mode }}/simulation?live={{ live }}">Aggiorna sessione in tempo reale</a>{% endif %}</div>
+<section class="panel padded">
+<form class="row" method="get">
+<label>Inizio<input type="date" name="start" value="{{ start.date().isoformat() }}"></label><label>Fine<input type="date" name="end" value="{{ end.date().isoformat() }}"></label>
+<label>Capitale €<input name="capital" value="{{ capital }}"></label><label>Latenza in minuti<input type="number" name="latency" min="0" max="1440" value="{{ latency }}"></label>
+<label>Incasso ipotizzato (giorni)<input type="number" name="sale_days" min="1" max="365" value="{{ sale_days }}"></label>
+<label>Disponibilità se manca verifica<select name="availability"><option value="true"{% if availability %} selected{% endif %}>Ipotizza disponibile</option><option value="false"{% if not availability %} selected{% endif %}>Salta acquisto</option></select></label><button>Ricalcola</button>
+</form>
+<form class="row" method="post">
+<input type="hidden" name="start" value="{{ start.isoformat() }}"><input type="hidden" name="end" value="{{ end.isoformat() }}"><input type="hidden" name="capital" value="{{ capital }}">
+<input type="hidden" name="latency" value="{{ latency }}"><input type="hidden" name="sale_days" value="{{ sale_days }}"><input type="hidden" name="availability" value="{{ 'true' if availability else 'false' }}">
+<button class="secondary">Salva replay</button><button class="secondary" name="live" value="true">Avvia sessione in tempo reale</button>
+</form>
+</section>
+<div class="grid">
+{% for item in results %}
+<section class="panel padded"><h2>{{ 'Margine puro' if item.strategy == 'margin' else 'Margine con liquidità' }}</h2>
+<div class="key-number {{ 'positive' if item.pnl|float >= 0 else 'negative' }}">{{ item.pnl|euro }} <small>P&amp;L simulato</small></div>
+{{ chart(item.strategy, item.curve|map(attribute='cash')|list, item.curve|map(attribute='at')|list, 'Capitale disponibile nel replay') }}
+<p>Cassa {{ item.cash|euro }} · Acquisti cumulati {{ item.committed|euro }} · Opportunità saltate {{ item.missed }}</p>
+<h3>Inventario a fine periodo</h3>
+{% for held in item.held %}<div class="mini-row"><span>{{ held.title }}<small>Disponibilità {{ 'osservata' if held.availability == 'checked' else 'ipotizzata' }}</small></span><strong>{{ held.purchase|euro }}</strong></div>
+{% else %}<p class="muted">Nessun capitale fermo in inventario.</p>{% endfor %}
+</section>
+{% endfor %}
+</div>
+<section class="panel padded"><h2>Esecuzione e storico</h2><p>La simulazione usa una latenza di {{ latency }} min e ipotizza l’incasso dopo {{ sale_days }} giorni. La strategia con liquidità richiede una probabilità misurabile di almeno il 50% entro 30 giorni.</p>
+{% for item in runs %}<div class="mini-row"><span>{{ item.data.type|capitalize }} · {{ item.known_at|rome }}</span>{% if item.data.type == 'live' %}<a href="/{{ mode }}/simulation?live={{ item.id }}">Apri sessione</a>{% else %}<span>Margine puro {{ item.data.results[0].pnl|euro }} · Con liquidità {{ item.data.results[1].pnl|euro }}</span>{% endif %}</div>{% endfor %}
+</section>
+{% endblock %}

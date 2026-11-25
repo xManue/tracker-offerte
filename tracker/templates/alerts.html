@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import costs %}
+{% block title %}Avvisi{% endblock %}
+{% block content %}
+<div class="heading"><div><div class="eyebrow">Notifiche</div><h1>Avvisi</h1><p>Valutazioni salvate al momento dell’avviso.</p></div></div>
+{% for item in alerts %}<article class="panel padded"><div class="heading compact"><div><h2>{{ item.data.title }}</h2><p>{{ item.source|channel }} · Rivendita {{ item.data.channel|channel }} · {{ item.known_at|rome }}</p></div><strong class="positive">{{ item.data.profit|euro }}</strong></div>{{ costs(item.data.snapshot.estimates[0].margin) }}</article>{% else %}<div class="panel empty"><h2>Nessun avviso</h2><p>Gli avvisi compaiono quando il worker valida un’occasione che supera la soglia.</p></div>{% endfor %}
+{% if request_alerts %}<section class="panel padded"><h2>Abbinamenti alle richieste</h2>{% for item in request_alerts %}<div class="mini-row"><span><a href="/{{ mode }}/offers/{{ item.data.offer_id }}">{{ item.data.title }}</a><small>{{ item.data.channel|channel }} · {{ item.known_at|rome }}</small></span><strong>{{ item.data.purchase|euro }}</strong></div>{% endfor %}</section>{% endif %}
+{% endblock %}
