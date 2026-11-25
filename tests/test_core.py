@@ -10,7 +10,7 @@ from tracker.channels import set_source
 from tracker.dataset import examples
 from tracker.db import Event, Job, now
 from tracker.demo import GPU, GPU_SUPER, seed
-from tracker.ingest import amount, preview, write_rows
+from tracker.ingest import amount, normalize, preview, write_rows
 from tracker.operations import component_estimates, offer_cards, plan_budget
 from tracker.replay import replay
 from tracker.store import enqueue, events, latest, utc
@@ -34,6 +34,10 @@ def test_decimal_and_unknown_states():
     values = margin(Decimal(250), converted, Decimal(".13"), Decimal(9), Decimal(1))
     assert values["fee"] == "32.50"
     assert values["profit"] == "108.50"
+    offer, *_ = normalize({"external_id": "fx-test", "title": GPU, "price": "100", "shipping": "0",
+                            "currency": "USD", "fx_rate": "0,90", "fx_source": "fixture",
+                            "fx_date": "01/01/2026"}, {}, "offer")
+    assert offer["fx_date"] == "2026-01-01"
 
 
 def test_model_conflicts_and_non_products():

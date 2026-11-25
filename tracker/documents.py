@@ -1,5 +1,6 @@
 import io
 import re
+from contextlib import closing
 
 from .ingest import parse_file
 
@@ -53,9 +54,8 @@ def pdf_ocr(raw, page):
 
     doc = pypdfium2.PdfDocument(raw)
     try:
-        with doc[page] as pdf_page:
-            with pdf_page.render(scale=2) as bitmap:
-                return image_evidence(bitmap.to_pil(), lines=True)["text"]
+        with closing(doc[page]) as pdf_page, closing(pdf_page.render(scale=2)) as bitmap:
+            return image_evidence(bitmap.to_pil(), lines=True)["text"]
     finally:
         doc.close()
 

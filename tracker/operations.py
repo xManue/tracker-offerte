@@ -8,6 +8,7 @@ from sqlalchemy import select
 from .catalog import catalog, clean, match
 from .channels import CHANNELS
 from .db import Reservation, now
+from .ingest import ROME
 from .store import events, latest, record, utc
 from .value import assess, dec, delivered, liquidity, margin, rounded, sales_features, selling_costs
 
@@ -198,9 +199,10 @@ def check_build(products):
 
 def request_matches(session, mode, cards):
     matches = []
+    today = now().astimezone(ROME).date().isoformat()
     for request in latest(session, mode, "request"):
         row = request.data
-        if row["expires"] < now().date().isoformat():
+        if row["expires"] < today:
             continue
         found, seen = [], set()
         for card in cards:

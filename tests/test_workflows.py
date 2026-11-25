@@ -1,3 +1,4 @@
+import io
 from datetime import timedelta
 
 import httpx
@@ -125,3 +126,29 @@ def test_request_notifications_require_opt_in(sessions):
             assert not events(session, "demo", "request_alert")
         assert client.post("/demo/requests", data={**data, "opt_in": "true"}).status_code == 200
         assert "Abbinamenti alle richieste" in client.get("/demo/alerts").text
+
+
+def test_stock_xlsx_and_pdf_scan_keep_source_location(monkeypatch):
+    from openpyxl import Workbook
+    from PIL import Image
+    from tracker import documents
+
+    book = Workbook()
+    book.active.append(("title", "quantity"))
+    book.active.append(("GPU esempio", 2))
+    spreadsheet = io.BytesIO()
+    book.save(spreadsheet)
+    [(_, row)] = documents.read_stock(spreadsheet.getvalue(), "stock.xlsx")
+    assert row["quantity"] == 2 and row["origin_ref"].endswith("riga 2")
+
+    scan = io.BytesIO()
+    Image.new("RGB", (300, 100), "white").save(scan, format="PDF")
+
+    def read_image(image, *, lines):
+        assert image.width > 300 and lines
+        return {"text": "CODICE;GPU esempio;2;usato;100"}
+
+    monkeypatch.setattr(documents, "image_evidence", read_image)
+    [(_, row)] = documents.read_stock(scan.getvalue(), "stock.pdf")
+    assert row["origin_ref"] == "Pagina 1, riga 1 (OCR)"
+    assert row["quantity"] == "2"

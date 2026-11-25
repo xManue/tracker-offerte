@@ -183,9 +183,10 @@ def normalize(row, mapping, kind):
     data["decision_title"] = clean_text(data["decision_title"])
     data["decision_condition"] = CONDITIONS.get(data["decision_condition"].casefold(), "unknown")
     if data["fx_rate"] is not None:
-        if Decimal(data["fx_rate"]) <= 0 or not data["fx_source"] or not date(data["fx_date"]):
+        rate_date = date(data["fx_date"])
+        if Decimal(data["fx_rate"]) <= 0 or not data["fx_source"] or rate_date is None:
             raise ValueError("Il cambio richiede tasso positivo, data e fonte")
-        data["fx_date"] = date(data["fx_date"]).date().isoformat()
+        data["fx_date"] = rate_date.astimezone(ROME).date().isoformat()
     for field in ("sold_at", "decision_at", "published_at"):
         parsed = date(data[field])
         data[field] = parsed.isoformat() if parsed else ""
