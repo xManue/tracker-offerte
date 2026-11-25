@@ -28,7 +28,7 @@
   {% for id, item in product_watches.items() %}
   <article class="inset">
     <div class="mini-row"><span><strong>{{ products[id].name }}</strong><small>{{ item.data.query }} · Ogni {{ item.data.minutes }} min</small></span><span>{{ 'Attivo' if item.data.enabled else 'In pausa' }}</span></div>
-    <small>{% for source in item.data.sources %}{{ channels[source].name }}{% if mode == 'real' %} ({{ connections[source]|join(' + ') if connections[source] and policies.get(source, {}).get('history') else 'da collegare' }}){% endif %}{{ ' · ' if not loop.last else '' }}{% endfor %}</small>
+    <small>{% for source in item.data.sources %}{{ channels[source].name }}{% if mode == 'real' %} ({{ connections[source]|join(' + ') if connections[source] and policies.get(source, {}).get('history') else 'Indice web Codex' if codex_enabled and item.data.signals and not connections[source] and policies.get(source, {}).get('history', true) else 'da collegare' }}){% endif %}{{ ' · ' if not loop.last else '' }}{% endfor %}</small>
     <details><summary>Modifica monitoraggio</summary>{{ product_form(id, item.data) }}</details>
     <form class="row" method="post" action="/{{ mode }}/sources/products/{{ id }}/state">
       <button class="secondary" name="enabled" value="{{ 'false' if item.data.enabled else 'true' }}">{{ 'Metti in pausa' if item.data.enabled else 'Riattiva' }}</button>
@@ -42,7 +42,7 @@
   <form class="row" method="get"><label class="grow">Parola chiave<input name="q" value="{{ query }}" required maxlength="120"></label><button>Cerca canali</button></form>
   <div class="channel-grid">
     {% for key, item in channels.items() if item.search %}
-    <article class="inset"><h3>{{ item.name }}</h3><p>{{ connections[key]|join(' + ') if connections[key] and mode == 'real' else item.method }} · {% if connections[key] and policies.get(key, {}).get('history') and mode == 'real' %}Raccolta configurata{% elif connections[key] and mode == 'real' %}Conservazione da abilitare{% else %}Fonte da collegare{% endif %}</p>
+    <article class="inset"><h3>{{ item.name }}</h3><p>{{ connections[key]|join(' + ') if connections[key] and mode == 'real' else item.method }} · {% if connections[key] and policies.get(key, {}).get('history') and mode == 'real' %}Raccolta configurata{% elif connections[key] and mode == 'real' %}Conservazione da abilitare{% elif codex_enabled and mode == 'real' and policies.get(key, {}).get('history', true) %}Indice web Codex per i prodotti monitorati{% else %}Fonte da collegare{% endif %}</p>
       <div class="links"><a target="_blank" rel="noopener noreferrer" href="{{ item.search_url(query) }}">Cerca offerte</a><a target="_blank" rel="noopener noreferrer" href="{{ item.seller }}">Area vendita</a></div>
     </article>
     {% endfor %}

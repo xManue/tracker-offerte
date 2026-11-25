@@ -194,6 +194,9 @@ def run(sessions, modes=("demo", "real"), *, once=False):
     with httpx.Client(timeout=12, follow_redirects=False) as client:
         while True:
             for mode in modes:
+                if mode == "real":
+                    from .codex_index import synchronize
+                    synchronize(sessions)
                 with sessions.begin() as session:
                     schedule(session, mode)
                 for _ in range(100):
