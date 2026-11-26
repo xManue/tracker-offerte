@@ -71,8 +71,10 @@ def test_indexed_discovery_repeats_and_alerts_without_creating_offers(
         assert one(sessions, "real", client)
     assert calls == ["0", "1", "0"]
     with sessions() as session:
-        [result] = events(session, "real", "index_result")
-        assert result.data["url"] == result_url
+        results = events(session, "real", "index_result")
+        assert len(results) == 2
+        assert {result.data["url"] for result in results} == {result_url}
+        assert len({result.data["collection_run"] for result in results}) == 2
         [signal] = events(session, "real", "monitor_signal")
         assert signal.data["purchase"] is None and signal.data["price"] is None
         assert not events(session, "real", "offer") and not events(session, "real", "alert")
@@ -180,6 +182,7 @@ def test_tavily_search_routes_seven_marketplaces_to_alerts(sessions, monkeypatch
     with sessions() as session:
         results = events(session, "real", "index_result")
         assert {row.source for row in results} == set(sources)
+        assert len(results) == 14
         assert all(row.data["provider"] == "tavily_web_search" and "content" not in row.data for row in results)
         assert len(events(session, "real", "monitor_signal")) == 7
         collections = events(session, "real", "collection")

@@ -43,6 +43,7 @@ def test_codex_manifests_and_results_follow_selected_products(sessions, monkeypa
     with sessions() as session:
         [indexed] = events(session, "real", "index_result")
         assert indexed.data["provider"] == "codex_web_search"
+        assert indexed.data["collection_run"] == request["id"]
         [alert] = events(session, "real", "monitor_signal")
         assert alert.data["price"] is None
         assert alert.data["url"] == "https://www.vinted.it/items/9471196434-nintendo-switch-oled"
@@ -133,16 +134,24 @@ def test_codex_only_rechecks_listings_when_tavily_discovers(sessions, monkeypatc
     url = "https://www.vinted.it/items/100-nintendo-switch-oled"
     other = "https://www.vinted.it/items/101-nintendo-switch-oled"
     title = "Nintendo Switch OLED"
+    clock = now()
+    monkeypatch.setattr("tracker.store.now", lambda: clock - timedelta(days=8))
     with sessions.begin() as session:
         seed_catalog(session, "real")
         set_source(session, "real", "vinted", history=True)
         set_source(session, "real", "subito", history=True)
         save_watch(session, "real", "switch-oled", ("vinted", "subito", "ebay"), 60, signals=True)
         save_index_results(session, "real", "vinted", "switch-oled", catalog(session, "real"),
-                           [{"url": url, "title": title}], provider="tavily_web_search")
+                           [{"url": url, "title": title}], provider="tavily_web_search", collection_run="older")
 
-    clock = now()
     manifest = tmp_path / "requests.json"
+    synchronize(sessions, tmp_path, clock)
+    assert json.loads(manifest.read_text(encoding="utf-8")) == {"items": []}
+    monkeypatch.setattr("tracker.store.now", lambda: clock)
+    with sessions.begin() as session:
+        save_index_results(session, "real", "vinted", "switch-oled", catalog(session, "real"),
+                           [{"url": url, "title": title}], provider="tavily_web_search", collection_run="current")
+
     synchronize(sessions, tmp_path, clock)
     [request] = json.loads(manifest.read_text(encoding="utf-8"))["items"]
     assert request["source"] == "vinted" and request["check_only"] is True

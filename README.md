@@ -124,6 +124,8 @@ Per Subito e Vinted, l’automazione verifica le singole pagine pubbliche. A ogn
 
 L’automazione e il worker devono poter usare la stessa cartella di lavoro. Il calendario di ogni prodotto resta quello impostato nel tracker. Disattiva la variabile e riavvia per togliere la coda di ricerca Codex. Le cartelle di scambio restano locali e gli avvisi già raccolti restano nell’archivio.
 
+Ogni ciclo salva l’osservazione di un annuncio compatibile con la sua fonte, l’ora e la ricerca che lo ha trovato. Quando lo stesso annuncio riappare, l’archivio conserva la nuova osservazione e **Avvisi** mantiene una sola segnalazione. Per i ricontrolli di Subito e Vinted, i sette giorni decorrono dall’ultima osservazione.
+
 Le fonti senza API o feed configurato possono condividere una chiave Brave Search. Usa un piano che consenta di conservare i risultati prima di abilitare questa configurazione nel file `.env`. [Brave Web Search API](https://api-dashboard.search.brave.com/app/documentation/web-search), [Condizioni di Brave Search API](https://api-dashboard.search.brave.com/terms-of-service)
 
 ```dotenv

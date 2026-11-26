@@ -137,7 +137,8 @@ def synchronize(sessions, directory=None, clock=None, *, lease_seconds=None):
             if key in targets(session, clock, previous=True):
                 if not checks_only:
                     matched = save_index_results(session, "real", source, target["product"],
-                                                 catalog(session, "real"), hits, provider="codex_web_search")
+                                                 catalog(session, "real"), hits, provider="codex_web_search",
+                                                 collection_run=key)
                     record(session, "real", "collection", source, key,
                            {"transport": "Indice web Codex", "status": "success", "query": target["query"],
                             "received": len(hits), "matched": matched, "rejected": 0, "page": 1})

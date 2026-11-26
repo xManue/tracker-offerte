@@ -107,7 +107,7 @@ def index_settings(source):
     return None
 
 
-def save_index_results(session, mode, source, product_id, products, rows, *, provider="brave_web_search"):
+def save_index_results(session, mode, source, product_id, products, rows, *, provider, collection_run):
     seen = set()
     for hit in rows:
         if not isinstance(hit, dict) or not isinstance(hit.get("url"), str) or not isinstance(hit.get("title"), str):
@@ -126,7 +126,8 @@ def save_index_results(session, mode, source, product_id, products, rows, *, pro
         seen.add(identifier)
         title = title[:512]
         record(session, mode, "index_result", source, identifier,
-               {"title": title, "url": url, "product_id": product_id, "provider": provider})
+               {"title": title, "url": url, "product_id": product_id, "provider": provider,
+                "collection_run": collection_run}, identity=f"{provider}:{product_id}:{collection_run}")
         record(session, mode, "monitor_signal", source, identifier, {
             "title": title, "url": url, "price": None, "purchase": None,
             "reasons": ["risultato indicizzato", "disponibilità e costo da verificare"],

@@ -321,7 +321,7 @@ def collect(session, mode, job, client):
         from .search_index import save_index_results
 
         accepted = save_index_results(session, mode, source, subscription.external_id, catalog(session, mode),
-                                      page.rows, provider=connector.provider)
+                                      page.rows, provider=connector.provider, collection_run=payload["run"])
         details.update(transport=connector.name, matched=accepted, rejected=0, status="success")
         valid = []
     else:
