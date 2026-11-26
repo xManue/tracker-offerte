@@ -16,14 +16,28 @@ services:
   web:
     <<: *tracker
     command: ["uvicorn", "tracker.web:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: "${TRACKER_CLOUD_RESTART_POLICY:-no}"
     ports:
       - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          from urllib.request import urlopen
+          urlopen("http://127.0.0.1:8000/health", timeout=4).close()
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       migrate:
         condition: service_completed_successfully
   worker:
     <<: *tracker
     command: ["tracker", "worker", "--mode", "real"]
+    restart: "${TRACKER_CLOUD_RESTART_POLICY:-no}"
     depends_on:
       migrate:
         condition: service_completed_successfully

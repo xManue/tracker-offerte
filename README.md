@@ -44,24 +44,24 @@ Copia `.env.cloud.example` in `.env.cloud` sulla VM e rendi il file leggibile so
 
 Puoi aprire gli stessi Avvisi anche dal PC prima di avere una VM. Dalla cartella del progetto, con `.env.cloud` e il certificato già configurati, avvia manualmente `tracker run-local --env-file .env.cloud` e apri [Avvisi](http://127.0.0.1:8000/real/alerts). Il percorso del certificato `data/supabase-ca.crt` funziona anche in Docker. Se hai creato `.env.cloud` da un esempio precedente, imposta `TRACKER_DATABASE_SCHEMA=tracker` e usa `sslrootcert=data/supabase-ca.crt` nella stringa di connessione.
 
-Per riprendere l’archivio, ferma il tracker locale e copia il suo `data/tracker.db` sulla VM come `data/tracker-restore.db`. Esegui i comandi seguenti prima del primo avvio. Il ripristino accetta solo tabelle del tracker vuote, conserva gli identificativi che legano storico e attività e apre il file SQLite in sola lettura.
+Se l’archivio è già in Supabase, collega la VM allo stesso progetto e passa all’avvio. Se l’archivio è ancora in SQLite, ferma il tracker locale e copia il suo `data/tracker.db` sulla VM come `data/tracker-restore.db`. Esegui i comandi seguenti prima del primo avvio. Il ripristino accetta solo tabelle del tracker vuote, conserva gli identificativi che legano storico e attività e apre il file SQLite in sola lettura.
 
 ```sh
 docker compose --env-file .env.cloud -f compose.cloud.yaml run --rm --build migrate alembic upgrade head
 docker compose --env-file .env.cloud -f compose.cloud.yaml run --rm --build tools tracker restore-sqlite /app/data/tracker-restore.db
 ```
 
-Avvia manualmente dashboard e worker quando vuoi eseguire il tracker. La porta web resta su loopback. Con un tunnel SSH, apri `http://127.0.0.1:8800/real/alerts` sul tuo computer.
+Avvia manualmente dashboard e worker quando vuoi eseguire il tracker. Compose attende la migrazione e verifica che la dashboard risponda e raggiunga il database. La porta web resta su loopback. Con un tunnel SSH, apri `http://127.0.0.1:8800/real/alerts` sul tuo computer.
 
 ```sh
 # Sulla VM
-docker compose --env-file .env.cloud -f compose.cloud.yaml up -d --build
+docker compose --env-file .env.cloud -f compose.cloud.yaml up -d --build --wait --wait-timeout 120
 
 # Dal tuo computer
 ssh -N -L 8800:127.0.0.1:8000 utente@vm
 ```
 
-Per fermarlo, usa `docker compose --env-file .env.cloud -f compose.cloud.yaml down` sulla VM. L’archivio resta in Supabase. Configura in `.env.cloud` le fonti autorizzate che vuoi eseguire sul server.
+Per mantenere dashboard e worker attivi dopo un riavvio della VM, imposta `TRACKER_CLOUD_RESTART_POLICY=unless-stopped` in `.env.cloud` e applica la configurazione con lo stesso comando `up`. Il valore predefinito `no` richiede l’avvio manuale anche dopo un riavvio. Per fermare il tracker, usa `docker compose --env-file .env.cloud -f compose.cloud.yaml down`. L’archivio resta in Supabase. [Politiche di riavvio Docker](https://docs.docker.com/engine/containers/start-containers-automatically/)
 
 Per usare anche la ricerca Codex già autorizzata con il tracker sulla VM, imposta `TRACKER_CODEX_BRIDGE=1` nel file della VM per identificarla in Sorgenti. Dal PC, dopo aver migrato il database, avvia `tracker codex-bridge --env-file .env.cloud`. Il comando usa il certificato in `data/supabase-ca.crt`, crea la coda locale `data/codex-cloud` e consegna gli esiti direttamente a Supabase. Puoi fermarlo con Ctrl+C. Codex usa questa coda mentre il collegamento è attivo. Le ricerche Codex richiedono il PC acceso e l’automazione in esecuzione. I connettori configurati sulla VM raccolgono dati autonomamente.
 
