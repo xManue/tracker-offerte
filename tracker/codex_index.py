@@ -9,16 +9,17 @@ from sqlalchemy import select
 from .availability import CHECK_SOURCES, STATUSES, listing_availability, save_listing_availability
 from .catalog import catalog
 from .channels import source_rules
-from .connectors import connections
+from .connectors import connections, direct_connection
 from .db import Event, now
 from .mail_alerts import canonical_listing
 from .monitoring import period_slot, watches
-from .search_index import SEARCH_DOMAINS, save_index_results
+from .search_index import SEARCH_DOMAINS, index_settings, save_index_results
 from .store import digest, record, utc
 
 
 CHECK_AGE = timedelta(days=7)
 CHECK_LIMIT = 5
+CHECK_BATCH = "listing_availability_batch"
 
 
 def enabled():
@@ -27,6 +28,11 @@ def enabled():
 
 def configured():
     return enabled() or os.getenv("TRACKER_CODEX_BRIDGE") == "1"
+
+
+def checks_indexed_listings(source):
+    return (source in CHECK_SOURCES and not direct_connection(source)
+            and index_settings(source) is not None)
 
 
 def targets(session, clock, *, previous=False):
@@ -38,20 +44,26 @@ def targets(session, clock, *, previous=False):
             continue
         slot = period_slot(clock, watch["minutes"])
         for source in watch["sources"]:
-            if source not in SEARCH_DOMAINS or connections(source):
+            if source not in SEARCH_DOMAINS:
                 continue
-            if not policies.get(source, {"history": True})["history"]:
+            checks_only = checks_indexed_listings(source)
+            if not policies.get(source, {"history": not checks_only})["history"]:
+                continue
+            if connections(source) and not checks_only:
                 continue
             periods = (slot, slot - 1) if previous else (slot,)
+            task = "codex-checks" if checks_only else "codex"
             for period in periods:
-                key = digest(f"codex:{subscription.id}:{source}:{period}")[:32]
+                key = digest(f"{task}:{subscription.id}:{source}:{period}")[:32]
                 items[key] = {"id": key, "product": product, "source": source,
                               "domain": SEARCH_DOMAINS[source], "query": watch["query"],
                               "period": period * watch["minutes"] * 60}
+                if checks_only:
+                    items[key]["check_only"] = True
     if not items:
         return items
     done = set(session.scalars(select(Event.external_id).where(
-        Event.mode == "real", Event.kind == "collection", Event.external_id.in_(items),
+        Event.mode == "real", Event.kind.in_(("collection", CHECK_BATCH)), Event.external_id.in_(items),
     )))
     return {key: item for key, item in items.items() if key not in done}
 
@@ -82,6 +94,7 @@ def apply_checks(session, target, hits, checks, identity, observed_at, clock):
         seen.add(identifier)
         save_listing_availability(session, source, identifier, url, observed, identity,
                                   period, observed_at, clock)
+    return len(seen)
 
 
 def synchronize(sessions, directory=None, clock=None, *, lease_seconds=None):
@@ -110,8 +123,9 @@ def synchronize(sessions, directory=None, clock=None, *, lease_seconds=None):
             continue
         target = pending[key]
         source = target["source"]
+        availability_only = target.get("check_only", False)
         hits = payload.get("hits", False) if isinstance(payload, dict) else payload
-        checks_only = isinstance(payload, dict) and hits is None
+        checks_only = availability_only or (isinstance(payload, dict) and hits is None)
         if checks_only:
             hits = []
         checks = payload.get("checks", []) if isinstance(payload, dict) else []
@@ -130,7 +144,11 @@ def synchronize(sessions, directory=None, clock=None, *, lease_seconds=None):
                 if source in CHECK_SOURCES and (hits or checks):
                     observed_at = min(clock, datetime.fromtimestamp(info.st_mtime, tz=UTC))
                     identity = f"{key}:checks" if checks_only else key
-                    apply_checks(session, target, hits, checks, identity, observed_at, clock)
+                    applied = apply_checks(session, target, hits, checks, identity, observed_at, clock)
+                    if availability_only and applied:
+                        record(session, "real", CHECK_BATCH, source, key,
+                               {"product_id": target["product"], "checked": applied,
+                                "provider": "codex_web_search"}, identity=key)
         with suppress(PermissionError):
             filename.unlink(missing_ok=True)
     with sessions() as session:
@@ -150,7 +168,7 @@ def synchronize(sessions, directory=None, clock=None, *, lease_seconds=None):
                                    identifier, item.data["url"]))
             target["checks"] = [url for _, _, url in sorted(candidates)[:CHECK_LIMIT]]
     manifest = directory / "requests.json"
-    payload = {"items": list(ready.values())}
+    payload = {"items": [target for target in ready.values() if not target.get("check_only") or target["checks"]]}
     if lease_seconds is not None:
         payload["active_until"] = (clock + timedelta(seconds=lease_seconds)).isoformat()
     data = json.dumps(payload, ensure_ascii=False, indent=2)

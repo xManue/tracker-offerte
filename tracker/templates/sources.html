@@ -43,6 +43,7 @@
   <div class="channel-grid">
     {% for key, item in channels.items() if item.search %}
     <article class="inset"><h3>{{ item.name }}</h3><p>{{ connections[key]|join(' + ') if connections[key] and mode == 'real' else item.method }} · {% if connections[key] and policies.get(key, {}).get('history') and mode == 'real' %}Raccolta configurata{% elif connections[key] and mode == 'real' %}Conservazione da abilitare{% elif codex_enabled and mode == 'real' and policies.get(key, {}).get('history', true) %}Indice web Codex per i prodotti monitorati{% else %}Fonte da collegare{% endif %}</p>
+      {% if mode == 'real' and codex_enabled and key in codex_check_sources and policies.get(key, {}).get('history') %}<p>Ricontrollo disponibilità via Codex</p>{% endif %}
       <div class="links"><a target="_blank" rel="noopener noreferrer" href="{{ item.search_url(query) }}">Cerca offerte</a><a target="_blank" rel="noopener noreferrer" href="{{ item.seller }}">Area vendita</a></div>
     </article>
     {% endfor %}

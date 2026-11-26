@@ -10,11 +10,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from tracker.availability import listing_availability
-from tracker.catalog import seed_catalog
+from tracker.catalog import catalog, seed_catalog
 from tracker.channels import set_source
-from tracker.codex_index import synchronize
+from tracker.codex_index import CHECK_BATCH, synchronize
 from tracker.db import now
 from tracker.monitoring import save_watch, set_enabled
+from tracker.search_index import save_index_results
 from tracker.store import events
 from tracker.web import create_app
 
@@ -123,6 +124,51 @@ def test_availability_keeps_archive_and_reopens_released_listings(sessions, monk
         assert len(events(session, "real", "listing_availability")) == 5
         assert len(events(session, "real", "monitor_signal")) == 2
         assert not events(session, "real", "offer")
+
+
+def test_codex_only_rechecks_listings_when_tavily_discovers(sessions, monkeypatch, tmp_path):
+    monkeypatch.setenv("TRACKER_CODEX_DISCOVERY", "1")
+    monkeypatch.setenv("TRACKER_TAVILY_API_KEY", "test-tavily-token")
+    monkeypatch.setenv("TRACKER_TAVILY_SOURCES", "vinted,subito,ebay")
+    url = "https://www.vinted.it/items/100-nintendo-switch-oled"
+    other = "https://www.vinted.it/items/101-nintendo-switch-oled"
+    title = "Nintendo Switch OLED"
+    with sessions.begin() as session:
+        seed_catalog(session, "real")
+        set_source(session, "real", "vinted", history=True)
+        set_source(session, "real", "subito", history=True)
+        save_watch(session, "real", "switch-oled", ("vinted", "subito", "ebay"), 60, signals=True)
+        save_index_results(session, "real", "vinted", "switch-oled", catalog(session, "real"),
+                           [{"url": url, "title": title}], provider="tavily_web_search")
+
+    clock = now()
+    manifest = tmp_path / "requests.json"
+    synchronize(sessions, tmp_path, clock)
+    [request] = json.loads(manifest.read_text(encoding="utf-8"))["items"]
+    assert request["source"] == "vinted" and request["check_only"] is True
+    assert request["checks"] == [url]
+    file = tmp_path / "results" / f"{request['id']}.json"
+    file.write_text(json.dumps({"hits": [{"url": other, "title": title}],
+                                "checks": [{"url": url, "status": "reserved"},
+                                           {"url": other, "status": "unavailable"}]}), encoding="utf-8")
+    synchronize(sessions, tmp_path, clock)
+    assert not file.exists()
+    assert json.loads(manifest.read_text(encoding="utf-8")) == {"items": []}
+
+    with sessions() as session:
+        [batch] = events(session, "real", CHECK_BATCH)
+        assert batch.data["checked"] == 1
+        assert len(events(session, "real", "monitor_signal")) == 1
+        assert not events(session, "real", "collection")
+        statuses = listing_availability(session, "real")
+        assert list(statuses) == [("vinted", "100")] and statuses[("vinted", "100")].status == "reserved"
+    with TestClient(create_app(sessions)) as browser:
+        assert "Annunci non disponibili (1)" in browser.get("/real/alerts").text
+        assert "Ricontrollo disponibilità via Codex" in browser.get("/real/sources").text
+
+    synchronize(sessions, tmp_path, clock + timedelta(hours=1))
+    [later] = json.loads(manifest.read_text(encoding="utf-8"))["items"]
+    assert later["id"] != request["id"] and later["checks"] == [url]
 
 
 def test_bridge_moves_codex_results_to_shared_postgres_without_local_worker(sessions, tmp_path):

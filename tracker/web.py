@@ -291,10 +291,11 @@ def create_app(sessions=None):
     def sources(request: Request, mode: Mode, q: str = "RTX 4070"):
         with db() as session:
             sales = latest(session, mode, "sale")
-            from .codex_index import configured as codex_enabled
+            from .codex_index import checks_indexed_listings, configured as codex_enabled
 
             return render(request, "sources", mode, query=q, connections={key: connections(key) for key in CHANNELS},
                           codex_enabled=codex_enabled(),
+                          codex_check_sources={key for key in CHANNELS if checks_indexed_listings(key)},
                           policies=source_rules(session, mode), watches=latest(session, mode, "watch"),
                           products=catalog(session, mode), product_watches=product_watches(session, mode),
                           marketplaces=MARKETPLACES,
