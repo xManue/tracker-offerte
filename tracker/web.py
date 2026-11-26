@@ -291,7 +291,7 @@ def create_app(sessions=None):
     def sources(request: Request, mode: Mode, q: str = "RTX 4070"):
         with db() as session:
             sales = latest(session, mode, "sale")
-            from .codex_index import enabled as codex_enabled
+            from .codex_index import configured as codex_enabled
 
             return render(request, "sources", mode, query=q, connections={key: connections(key) for key in CHANNELS},
                           codex_enabled=codex_enabled(),

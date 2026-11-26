@@ -25,6 +25,10 @@ def enabled():
     return os.getenv("TRACKER_CODEX_DISCOVERY") == "1"
 
 
+def configured():
+    return enabled() or os.getenv("TRACKER_CODEX_BRIDGE") == "1"
+
+
 def targets(session, clock, *, previous=False):
     policies = source_rules(session, "real")
     items = {}
@@ -80,7 +84,7 @@ def apply_checks(session, target, hits, checks, identity, observed_at, clock):
                                   period, observed_at, clock)
 
 
-def synchronize(sessions, directory=None, clock=None):
+def synchronize(sessions, directory=None, clock=None, *, lease_seconds=None):
     if not enabled():
         return
     directory = directory or Path("data/codex-index")
@@ -146,8 +150,12 @@ def synchronize(sessions, directory=None, clock=None):
                                    identifier, item.data["url"]))
             target["checks"] = [url for _, _, url in sorted(candidates)[:CHECK_LIMIT]]
     manifest = directory / "requests.json"
-    data = json.dumps({"items": list(ready.values())}, ensure_ascii=False, indent=2)
-    if not manifest.exists() or manifest.read_text(encoding="utf-8") != data:
-        scratch = directory / f"requests-{os.getpid()}.tmp"
-        scratch.write_text(data, encoding="utf-8")
-        scratch.replace(manifest)
+    payload = {"items": list(ready.values())}
+    if lease_seconds is not None:
+        payload["active_until"] = (clock + timedelta(seconds=lease_seconds)).isoformat()
+    data = json.dumps(payload, ensure_ascii=False, indent=2)
+    with suppress(PermissionError):
+        if not manifest.exists() or manifest.read_text(encoding="utf-8") != data:
+            scratch = directory / f"requests-{os.getpid()}.tmp"
+            scratch.write_text(data, encoding="utf-8")
+            scratch.replace(manifest)

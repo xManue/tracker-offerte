@@ -31,6 +31,9 @@ def parser():
     local = cmds.add_parser("run-local", help="Avvia il tracker e il worker dalla stessa configurazione")
     local.add_argument("--port", type=int, default=8000)
     local.add_argument("--env-file", type=Path)
+    bridge = cmds.add_parser("codex-bridge", help="Collega le ricerche Codex locali al database cloud")
+    bridge.add_argument("--env-file", type=Path, default=Path(".env.cloud"))
+    bridge.add_argument("--once", action="store_true")
     restore = cmds.add_parser("restore-sqlite", help="Trasferisci un archivio SQLite in un PostgreSQL vuoto")
     restore.add_argument("file", type=Path)
     cmds.add_parser("seed-demo")
@@ -123,6 +126,13 @@ def main():
     root = parser()
     args = root.parse_args()
     action = args.command
+    if action == "codex-bridge":
+        from .codex_bridge import run_codex_bridge
+
+        try:
+            return run_codex_bridge(args.env_file, once=args.once)
+        except (OSError, ValueError) as error:
+            root.error(str(error))
     if action == "run-local":
         try:
             raise SystemExit(run_local(args.port, args.env_file))

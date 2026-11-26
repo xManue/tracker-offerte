@@ -59,7 +59,9 @@ docker compose --env-file .env.cloud -f compose.cloud.yaml up -d --build
 ssh -N -L 8800:127.0.0.1:8000 utente@vm
 ```
 
-Per fermarlo, usa `docker compose --env-file .env.cloud -f compose.cloud.yaml down` sulla VM. L’archivio resta in Supabase. Configura in `.env.cloud` le fonti autorizzate che vuoi eseguire sul server. L’automazione Codex già configurata sul PC continua a usare la sua cartella locale.
+Per fermarlo, usa `docker compose --env-file .env.cloud -f compose.cloud.yaml down` sulla VM. L’archivio resta in Supabase. Configura in `.env.cloud` le fonti autorizzate che vuoi eseguire sul server.
+
+Per usare anche la ricerca Codex già autorizzata con il tracker sulla VM, imposta `TRACKER_CODEX_BRIDGE=1` nel file della VM per identificarla in Sorgenti. Dal PC, dopo aver migrato il database, avvia `tracker codex-bridge --env-file .env.cloud`. Il comando usa il certificato in `data/supabase-ca.crt`, crea la coda locale `data/codex-cloud` e consegna gli esiti direttamente a Supabase. Puoi fermarlo con Ctrl+C. Codex usa questa coda mentre il collegamento è attivo. Le ricerche Codex richiedono il PC acceso e l’automazione in esecuzione. I connettori configurati sulla VM raccolgono dati autonomamente.
 
 ## Percorso demo
 

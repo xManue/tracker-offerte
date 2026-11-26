@@ -1,8 +1,13 @@
 import json
 import os
-from datetime import timedelta
+import subprocess
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from tracker.availability import listing_availability
 from tracker.catalog import seed_catalog
@@ -118,3 +123,40 @@ def test_availability_keeps_archive_and_reopens_released_listings(sessions, monk
         assert len(events(session, "real", "listing_availability")) == 5
         assert len(events(session, "real", "monitor_signal")) == 2
         assert not events(session, "real", "offer")
+
+
+def test_bridge_moves_codex_results_to_shared_postgres_without_local_worker(sessions, tmp_path):
+    with sessions.begin() as session:
+        if session.bind.dialect.name != "postgresql":
+            pytest.skip("Richiede PostgreSQL di test")
+        schema = session.scalar(text("SELECT current_schema()"))
+        url = session.bind.url
+        url = url.set(password=url.password or "fixture").render_as_string(hide_password=False)
+        seed_catalog(session, "real")
+        save_watch(session, "real", "switch-oled", ("vinted",), 60, signals=True)
+
+    env_file = tmp_path / ".env.cloud"
+    env_file.write_text(f"TRACKER_DATABASE_URL='{url}'\nTRACKER_DATABASE_SCHEMA={schema}\n"
+                        "TRACKER_CODEX_DISCOVERY=0\n", encoding="utf-8")
+    project = Path(__file__).resolve().parents[1]
+    paths = [str(project), *(str(Path(item).resolve()) for item in sys.path if item)]
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(paths)}
+    args = [sys.executable, "-m", "tracker.cli", "codex-bridge", "--once"]
+    subprocess.run(args, cwd=tmp_path, env=env, check=True)
+
+    exchange = tmp_path / "data" / "codex-cloud"
+    manifest = exchange / "requests.json"
+    queued = json.loads(manifest.read_text(encoding="utf-8"))
+    assert datetime.fromisoformat(queued["active_until"]) > now()
+    [request] = queued["items"]
+    link = "https://www.vinted.it/items/12345-nintendo-switch-oled"
+    (exchange / "results" / f"{request['id']}.json").write_text(json.dumps(
+        {"hits": [{"url": link, "title": "Nintendo Switch OLED", "status": "unknown"}]},
+    ), encoding="utf-8")
+    subprocess.run(args, cwd=tmp_path, env=env, check=True)
+
+    with TestClient(create_app(sessions)) as client:
+        assert link in client.get("/real/alerts").text
+    assert not list((exchange / "results").iterdir())
+    assert request["id"] not in {item["id"] for item in json.loads(manifest.read_text(encoding="utf-8"))["items"]}
+    assert not (tmp_path / "data" / "codex-index").exists()
