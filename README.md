@@ -116,7 +116,7 @@ Per attivare un feed imposta `TRACKER_FEED_<FONTE>_URL`, `_TOKEN` facoltativo e 
 
 ### Ricerca di annunci indicizzati
 
-Su questo computer puoi collegare l’automazione Codex autorizzata impostando `TRACKER_CODEX_DISCOVERY=1` in `.env` e avviando `tracker run-local`. Il worker crea `data/codex-index/requests.json` dai prodotti monitorati con segnalazioni incomplete attive. L’automazione usa quei prodotti e consegna al worker i titoli e i link pubblici. I risultati compaiono in **Avvisi**, con prezzo e disponibilità da verificare. Per le fonti già collegate con API, feed, Brave o email si usa il collegamento configurato.
+Su questo computer puoi collegare l’automazione Codex autorizzata impostando `TRACKER_CODEX_DISCOVERY=1` in `.env` e avviando `tracker run-local`. Il worker crea `data/codex-index/requests.json` dai prodotti monitorati con segnalazioni incomplete attive. L’automazione usa quei prodotti e consegna al worker i titoli e i link pubblici. I risultati compaiono in **Avvisi**, con prezzo e disponibilità da verificare. Per le fonti già collegate con API, feed, Brave, Tavily o email si usa il collegamento configurato.
 
 Per Subito e Vinted, l’automazione verifica le singole pagine pubbliche. A ogni ricerca ricontrolla anche fino a cinque annunci già indicizzati negli ultimi sette giorni, dando precedenza a quelli verificati meno di recente. Se la ricerca di nuovi annunci fallisce, gli esiti dei ricontrolli vengono comunque salvati e la ricerca resta in coda. Gli avvisi venduti, riservati, dichiarati in trattativa o rimossi passano alla sezione richiudibile **Annunci non disponibili**. Una prenotazione può rientrare nell’elenco quando la pagina conferma che l’annuncio è di nuovo disponibile. L’ora indica quando è stata raccolta l’ultima evidenza. Le trattative private e le pagine che non mostrano uno stato chiaro restano da verificare.
 
@@ -132,6 +132,15 @@ TRACKER_BRAVE_MAX_PAGES=1
 ```
 
 In **Prodotti monitorati**, seleziona le fonti e **Mostra anche offerte da verificare con dati incompleti**. Abilita **Storico consentito** per le fonti selezionate. Il worker interroga l’indice a ogni ciclo e accetta solo link ad annunci compatibili con il prodotto. La pagina **Avvisi** mostra il link identificato e indica che disponibilità, prezzo e costi restano da controllare. La copertura dipende dalle pagine indicizzate. Il limite configurabile da 1 a 10 pagine vale per prodotto, marketplace e ciclo, con fino a 20 risultati per chiamata.
+
+**Tavily** permette al worker di cercare annunci indicizzati anche sulla VM, indipendentemente da Codex. Il piano Researcher include 1.000 crediti al mese e si attiva senza carta. Crea una chiave da **API Keys** nella dashboard e configurala nel file `.env` in locale o in `.env.cloud` sulla VM. Seleziona i marketplace, abilita lo storico e le segnalazioni incomplete come per Brave. I feed, le API dei marketplace e Brave, se configurati per la stessa fonte, mantengono la precedenza. [Dashboard Tavily](https://app.tavily.com/) · [Crediti e prezzi](https://docs.tavily.com/documentation/api-credits)
+
+```dotenv
+TRACKER_TAVILY_API_KEY=
+TRACKER_TAVILY_SOURCES=ebay,subito,vinted,amazon,aliexpress,wallapop,facebook
+```
+
+Tavily usa una ricerca base da un credito per prodotto, marketplace e ciclo. Per una prima prova imposta **720 minuti** per due prodotti su sette marketplace, pari a 868 crediti in un mese di 31 giorni prima di eventuali ritentativi. Mantieni il piano Researcher senza Pay As You Go se vuoi evitare addebiti. In **Sorgenti** puoi vedere il collegamento e gli errori. Tavily consegna a **Avvisi** il titolo e il link mentre la disponibilità resta da verificare. [API di ricerca Tavily](https://docs.tavily.com/documentation/api-reference/endpoint/search) · [Conservazione dei risultati](https://help.tavily.com/articles/1612400809-storing-caching-retaining-output)
 
 In **Dati reali → Sorgenti → Prodotti monitorati** seleziona un prodotto e i marketplace, poi imposta la frequenza e le soglie. I monitoraggi si possono modificare o mettere in pausa. Il worker usa la frequenza più breve delle ricerche che condividono la stessa casella di una fonte. Per gli avvisi di margine servono costo completo, disponibilità e confronti sufficienti. Se selezioni anche le offerte da verificare, queste appaiono nella stessa pagina con ciò che manca.
 

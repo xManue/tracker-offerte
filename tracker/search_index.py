@@ -9,6 +9,7 @@ from .mail_alerts import canonical_listing
 from .store import record
 
 ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
+TAVILY_ENDPOINT = "https://api.tavily.com/search"
 SEARCH_DOMAINS = {
     "ebay": "ebay.it",
     "subito": "subito.it",
@@ -20,16 +21,11 @@ SEARCH_DOMAINS = {
 }
 
 
-def search_key(source):
-    enabled = {item.strip().casefold() for item in os.getenv("TRACKER_BRAVE_SOURCES", "").split(",")}
-    if source in SEARCH_DOMAINS and source in enabled and os.getenv("TRACKER_BRAVE_STORAGE_ALLOWED") == "1":
-        return os.getenv("TRACKER_BRAVE_API_KEY", "").strip()
-    return ""
-
-
 class BraveWebSearch:
     kind = "search_index"
     supports_refresh = False
+    name = "Indice Brave"
+    provider = "brave_web_search"
 
     def __init__(self, client, source, key):
         self.http, self.source, self.key = client, source, key
@@ -62,6 +58,50 @@ class BraveWebSearch:
             raise FetchError("Elenco risultati Brave non valido")
         next_cursor = str(offset + 1) if details.get("more_results_available") and offset + 1 < self.page_limit else None
         return Page(results, next_cursor)
+
+
+class TavilyWebSearch:
+    kind = "search_index"
+    supports_refresh = False
+    name = "Indice Tavily"
+    provider = "tavily_web_search"
+
+    def __init__(self, client, source, key):
+        self.http, self.source, self.key = client, source, key
+
+    def discover(self, query, cursor):
+        keywords = clean(query)
+        if not keywords:
+            raise FetchError("La ricerca nell’indice richiede parole o codici del prodotto", retry=False)
+        if self.source == "facebook":
+            keywords += " marketplace"
+        response = self.http.post(TAVILY_ENDPOINT, headers={"Authorization": f"Bearer {self.key}"}, json={
+            "query": keywords, "include_domains": [SEARCH_DOMAINS[self.source]],
+            "country": "italy", "language": "it", "max_results": 20,
+            "search_depth": "basic", "auto_parameters": False,
+            "include_answer": False, "include_raw_content": False,
+        })
+        if response.status_code in (432, 433):
+            raise FetchError("Limite di crediti Tavily raggiunto", retry=False)
+        results = checked(response).get("results")
+        if not isinstance(results, list):
+            raise FetchError("Elenco risultati Tavily non valido")
+        return Page(results)
+
+
+def index_settings(source):
+    if source not in SEARCH_DOMAINS:
+        return None
+    providers = [("TAVILY", TavilyWebSearch)]
+    if os.getenv("TRACKER_BRAVE_STORAGE_ALLOWED") == "1":
+        providers.insert(0, ("BRAVE", BraveWebSearch))
+    for prefix, connector in providers:
+        key = os.getenv(f"TRACKER_{prefix}_API_KEY", "").strip()
+        if key:
+            sources = os.getenv(f"TRACKER_{prefix}_SOURCES", "").split(",")
+            if source in {item.strip().casefold() for item in sources}:
+                return connector, key
+    return None
 
 
 def save_index_results(session, mode, source, product_id, products, rows, *, provider="brave_web_search"):

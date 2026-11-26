@@ -152,9 +152,12 @@ def direct_connection(source):
 
 
 def connections(source):
-    from .search_index import search_key
+    from .search_index import index_settings
 
-    return [value for value in (direct_connection(source) or ("Indice Brave" if search_key(source) else None),
+    connection = direct_connection(source)
+    if not connection and (settings := index_settings(source)):
+        connection = settings[0].name
+    return [value for value in (connection,
             "Avvisi email" if mail_settings(source) else None) if value]
 
 
@@ -177,9 +180,10 @@ def adapter(client, source):
         from .retail import AliExpressAffiliate
         return AliExpressAffiliate(client, os.environ["ALIEXPRESS_TOP_KEY"], os.environ["ALIEXPRESS_TOP_SECRET"],
                                    os.environ["ALIEXPRESS_TRACKING_ID"])
-    from .search_index import BraveWebSearch, search_key
-    if key := search_key(source):
-        return BraveWebSearch(client, source, key)
+    from .search_index import index_settings
+    if settings := index_settings(source):
+        connector, key = settings
+        return connector(client, source, key)
     raise FetchError("Connettore automatico da configurare", retry=False)
 
 
@@ -202,7 +206,7 @@ def active_subscriptions(session, mode):
 def schedule(session, mode, timestamp=None):
     if mode != "real":
         return
-    from .search_index import search_key
+    from .search_index import index_settings
 
     timestamp = timestamp or now()
     rules = source_rules(session, mode)
@@ -211,7 +215,7 @@ def schedule(session, mode, timestamp=None):
         for source in sources:
             if not rules.get(source, {}).get("history"):
                 continue
-            indexed = not legacy and row.data["signals"] and search_key(source)
+            indexed = not legacy and row.data["signals"] and index_settings(source)
             if direct_connection(source) or indexed:
                 schedule_search(session, mode, timestamp, row, source)
             if mail_settings(source):
@@ -316,8 +320,9 @@ def collect(session, mode, job, client):
     if kind == "search_index":
         from .search_index import save_index_results
 
-        accepted = save_index_results(session, mode, source, subscription.external_id, catalog(session, mode), page.rows)
-        details.update(transport="Indice Brave", matched=accepted, rejected=0, status="success")
+        accepted = save_index_results(session, mode, source, subscription.external_id, catalog(session, mode),
+                                      page.rows, provider=connector.provider)
+        details.update(transport=connector.name, matched=accepted, rejected=0, status="success")
         valid = []
     else:
         rows = list(enumerate(page.rows, start=1))
