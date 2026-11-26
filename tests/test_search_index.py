@@ -131,7 +131,7 @@ def test_tavily_search_routes_seven_marketplaces_to_alerts(sessions, monkeypatch
     sources = {
         "ebay": ("ebay.it", "https://www.ebay.it/itm/9471196434"),
         "subito": ("subito.it", "https://www.subito.it/videogiochi/nintendo-switch-oled-9471196434.htm"),
-        "vinted": ("vinted.it", "https://www.vinted.it/items/9471196434-nintendo-switch-oled"),
+        "vinted": ("www.vinted.it", "https://www.vinted.it/items/9471196434-nintendo-switch-oled"),
         "amazon": ("amazon.it", "https://www.amazon.it/dp/B0991S7B7B"),
         "aliexpress": ("aliexpress.com", "https://it.aliexpress.com/item/9471196434.html"),
         "wallapop": ("wallapop.com", "https://it.wallapop.com/item/nintendo-switch-oled-9471196434"),
@@ -147,7 +147,10 @@ def test_tavily_search_routes_seven_marketplaces_to_alerts(sessions, monkeypatch
         assert request.headers["Authorization"] == "Bearer test-tavily-token"
         body = json.loads(request.content)
         [domain] = body["include_domains"]
-        expected_query = "nintendo switch oled marketplace" if domain == "facebook.com" else "nintendo switch oled"
+        expected_query = {
+            "ebay.it": "site:ebay.it/itm nintendo switch oled",
+            "facebook.com": "nintendo switch oled marketplace",
+        }.get(domain, "nintendo switch oled")
         assert body["query"] == expected_query
         assert body["country"] == "italy" and body["language"] == "it"
         assert body["search_depth"] == "basic" and body["auto_parameters"] is False

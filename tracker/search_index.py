@@ -19,6 +19,7 @@ SEARCH_DOMAINS = {
     "wallapop": "wallapop.com",
     "facebook": "facebook.com",
 }
+TAVILY_SEARCH_DOMAINS = {**SEARCH_DOMAINS, "vinted": "www.vinted.it"}
 
 
 class BraveWebSearch:
@@ -73,10 +74,12 @@ class TavilyWebSearch:
         keywords = clean(query)
         if not keywords:
             raise FetchError("La ricerca nell’indice richiede parole o codici del prodotto", retry=False)
-        if self.source == "facebook":
+        if self.source == "ebay":
+            keywords = f"site:ebay.it/itm {keywords}"
+        elif self.source == "facebook":
             keywords += " marketplace"
         response = self.http.post(TAVILY_ENDPOINT, headers={"Authorization": f"Bearer {self.key}"}, json={
-            "query": keywords, "include_domains": [SEARCH_DOMAINS[self.source]],
+            "query": keywords, "include_domains": [TAVILY_SEARCH_DOMAINS[self.source]],
             "country": "italy", "language": "it", "max_results": 20,
             "search_depth": "basic", "auto_parameters": False,
             "include_answer": False, "include_raw_content": False,

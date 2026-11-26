@@ -42,6 +42,8 @@ Usa un progetto Supabase Free dedicato. Il piano include 500 MB per il database 
 
 Copia `.env.cloud.example` in `.env.cloud` sulla VM e rendi il file leggibile solo dal tuo utente. In Supabase apri **Connect** e usa la stringa **Session pooler** sulla porta 5432 se la VM è IPv4. Con IPv6 puoi usare **Direct connection**. Imposta `TRACKER_DATABASE_URL` con la stringa del progetto e la password del database codificata nell’URL. Scarica il certificato del database da Supabase e salvalo in `data/supabase-ca.crt` sulla VM per la verifica TLS. L’app usa PostgreSQL nello schema `tracker`. Puoi disattivare la Data API del progetto, che l’app non usa. [Connessione PostgreSQL e TLS](https://supabase.com/docs/guides/database/connecting-to-postgres) · [Data API](https://supabase.com/docs/guides/api/securing-your-api)
 
+Puoi aprire gli stessi Avvisi anche dal PC prima di avere una VM. Dalla cartella del progetto, con `.env.cloud` e il certificato già configurati, avvia manualmente `tracker run-local --env-file .env.cloud` e apri [Avvisi](http://127.0.0.1:8000/real/alerts). Il percorso del certificato `data/supabase-ca.crt` funziona anche in Docker. Se hai creato `.env.cloud` da un esempio precedente, imposta `TRACKER_DATABASE_SCHEMA=tracker` e usa `sslrootcert=data/supabase-ca.crt` nella stringa di connessione.
+
 Per riprendere l’archivio, ferma il tracker locale e copia il suo `data/tracker.db` sulla VM come `data/tracker-restore.db`. Esegui i comandi seguenti prima del primo avvio. Il ripristino accetta solo tabelle del tracker vuote, conserva gli identificativi che legano storico e attività e apre il file SQLite in sola lettura.
 
 ```sh
